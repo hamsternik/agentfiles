@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help deps slave master dry-run-slave dry-run-master doctor hooks lint test e2e-power secrets-scan path
+.PHONY: help deps slave master dry-run-slave dry-run-master doctor hooks lint test e2e-power remote-step secrets-scan path
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -36,6 +36,9 @@ test: ## Run tests under macOS /bin/bash 3.2
 
 e2e-power: ## Check the power step on a real host: make e2e-power TARGET=user@host
 	@tests/e2e/power.e2e.sh "$(TARGET)"
+
+remote-step: ## Run one step of this working tree on a real host: make remote-step TARGET=user@host STEP=15 VARS="AF_LID_CLOSED=1"
+	@tests/e2e/remote-step.sh "$(TARGET)" "$(STEP)" $(VARS)
 
 secrets-scan: ## Scan full git history for secrets
 	gitleaks git --redact --config .gitleaks.toml .
