@@ -21,7 +21,8 @@ case "$role" in
   host)
     check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/host/Brewfile"
     check "never sleeps on AC"      bash -c "pmset -g custom | awk '/AC Power/,0' | grep -Eq '^ *sleep +0'"
-    check "Remote Login on"         bash -c "systemsetup -getremotelogin 2>/dev/null | grep -q On || nc -z localhost 22"
+    if [[ "${AF_LID_CLOSED:-0}" == 1 ]]; then check "stays awake with lid closed" bash -c "pmset -g | grep -Eq 'SleepDisabled[[:space:]]+1'"; fi
+    check "Remote Login on"        bash -c "systemsetup -getremotelogin 2>/dev/null | grep -q On || nc -z localhost 22"
     check "Xcode installed"         xcodebuild -version
     check "Docker (OrbStack) up"    docker info
     if [[ "${AF_US_GATEWAY_ENABLED:-0}" == 1 ]]; then check "US gateway exits in US" "$AF_ROOT/bin/af" gateway test; fi

@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help deps host cockpit dry-run-host dry-run-cockpit doctor hooks lint secrets-scan path
+.PHONY: help deps host cockpit dry-run-host dry-run-cockpit doctor hooks lint test secrets-scan path
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -29,7 +29,10 @@ hooks: ## Install git hooks (gitleaks + denylist) for this repo
 	git config core.hooksPath hooks
 
 lint: ## shellcheck every script
-	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/*
+	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/* tests/*.sh
+
+test: ## Run tests under macOS /bin/bash 3.2
+	@for t in tests/*.test.sh; do echo "== $$t"; /bin/bash "$$t" || exit 1; done
 
 secrets-scan: ## Scan full git history for secrets
 	gitleaks git --redact --config .gitleaks.toml .

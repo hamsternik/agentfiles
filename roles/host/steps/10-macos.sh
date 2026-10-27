@@ -12,11 +12,7 @@ run sudo scutil --set ComputerName "$AF_HOSTNAME"
 run sudo scutil --set HostName "$AF_HOSTNAME"
 run sudo scutil --set LocalHostName "$AF_HOSTNAME"
 
-log "Power: never sleep on AC, wake for network, restart after freeze"
-# -c = on charger only, so a pulled cable still lets the battery protect itself.
-run sudo pmset -c sleep 0 disksleep 0 displaysleep 10 powernap 0 womp 1 tcpkeepalive 1
-run sudo pmset -a autorestart 1
-run sudo systemsetup -setrestartfreeze on >/dev/null
+# Power settings live in 15-power.sh.
 
 log "Updates: download automatically, never install/reboot on their own"
 run sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool true
