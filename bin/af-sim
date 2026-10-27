@@ -15,7 +15,8 @@ af_load_config
 require_macos
 
 device_for_slot() {
-  local idx="$1" devtype="$2" name="af-sim-$1" udid runtime
+  local idx="$1" devtype="$2" name udid runtime
+  name="af-sim-$idx"
   udid="$(xcrun simctl list devices -j | jq -r --arg n "$name" '[.devices[][] | select(.name == $n and .isAvailable)] | first | .udid // empty')"
   if [[ -z "$udid" ]]; then
     runtime="$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier // empty')"

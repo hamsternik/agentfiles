@@ -29,7 +29,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 steps_dir="$AF_ROOT/roles/$role/steps"
-[[ -d "$steps_dir" ]] || die "Unknown role '$role'. Available: $(ls "$AF_ROOT/roles" | tr '\n' ' ')"
+if [[ ! -d "$steps_dir" ]]; then
+  roles=""; for d in "$AF_ROOT"/roles/*/; do roles="$roles $(basename "$d")"; done
+  die "Unknown role '$role'. Available:$roles"
+fi
 
 # First run: create local/ from the examples and stop so it can be filled in.
 if [[ ! -f "$AF_LOCAL/machine.env" ]]; then

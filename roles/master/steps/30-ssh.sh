@@ -24,7 +24,7 @@ fi
 ok "Wrote $conf"
 
 if grep -qs "Include $conf" "$HOME/.ssh/config" 2>/dev/null; then
-  ok "~/.ssh/config already includes it"
+  ok "$HOME/.ssh/config already includes it"
 else
   manual "Add this as the FIRST line of ~/.ssh/config (or your dotfiles ssh config):  Include $conf"
 fi

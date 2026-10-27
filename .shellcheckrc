@@ -1,0 +1,3 @@
+# Resolve "# shellcheck source=" paths relative to each script, so `make lint`
+# works from any directory and follows lib/common.sh.
+source-path=SCRIPTDIR

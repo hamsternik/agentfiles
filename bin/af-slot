@@ -17,7 +17,8 @@ af_load_config
 slots_root="$AF_STATE/slots"
 
 limit_for() {
-  local var="AF_MAX_$(tr '[:lower:]' '[:upper:]' <<<"$1")"
+  local var
+  var="AF_MAX_$(tr '[:lower:]' '[:upper:]' <<<"$1")"
   [[ -n "${!var:-}" ]] || die "No limit $var configured for slot kind '$1'"
   echo "${!var}"
 }
