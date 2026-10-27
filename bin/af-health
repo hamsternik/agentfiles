@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Check disk, memory, swap and the US gateway; notify on changes
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+#   af health          # print status, notify on transitions
+#   af health --quiet  # only notify (used by launchd every 15 min)
+quiet=0; [[ "${1:-}" == --quiet ]] && quiet=1
+problems=()
+
+disk_pct="$(df -P "$HOME" | awk 'NR==2 {gsub("%","",$5); print $5}')"
+if (( disk_pct >= AF_DISK_BLOCK_PCT )); then
+  touch "$AF_STATE/disk-blocked"
+  problems+=("disk ${disk_pct}% used: new builds/worktrees BLOCKED")
+else
+  rm -f "$AF_STATE/disk-blocked"
+  (( disk_pct >= AF_DISK_WARN_PCT )) && problems+=("disk ${disk_pct}% used")
+fi
+
+mem_free="?"; swap_mb="?"
+if have memory_pressure; then
+  mem_free="$(memory_pressure -Q 2>/dev/null | awk -F': ' '/free percentage/ {gsub("%","",$2); print $2}')"
+  [[ -n "$mem_free" ]] && (( mem_free < AF_MEM_FREE_WARN_PCT )) && problems+=("memory free ${mem_free}%")
+fi
+if is_macos; then
+  swap_mb="$(sysctl -n vm.swapusage | awk '{for (i=1;i<=NF;i++) if ($i=="used") {v=$(i+2); sub("M","",v); printf "%d", v}}')"
+  [[ -n "$swap_mb" ]] && (( swap_mb > AF_SWAP_WARN_MB )) && problems+=("swap ${swap_mb} MB used")
+fi
+
+gateway="disabled"
+if [[ "${AF_US_GATEWAY_ENABLED:-0}" == 1 ]]; then
+  if "$AF_ROOT/bin/af" gateway test >/dev/null 2>&1; then
+    gateway="ok"
+  else
+    gateway="down"
+    # One self-heal attempt (e.g. Tailscale came up after OrbStack on boot).
+    if "$AF_ROOT/bin/af" gateway up >/dev/null 2>&1 && sleep 15 && "$AF_ROOT/bin/af" gateway test >/dev/null 2>&1; then
+      gateway="restarted"
+    else
+      problems+=("US gateway down")
+    fi
+  fi
+fi
+
+summary="disk=${disk_pct}% mem_free=${mem_free}% swap=${swap_mb}MB gateway=${gateway}"
+printf '%s %s\n' "$(date '+%F %T')" "$summary" >> "$AF_LOGS/health.log"
+
+status="ok"
+if (( ${#problems[@]} )); then status="$(printf '%s; ' "${problems[@]}")"; status="${status%; }"; fi
+last="$(cat "$AF_STATE/health.last" 2>/dev/null || echo ok)"
+if [[ "$status" != "$last" ]]; then
+  if [[ "$status" == ok ]]; then "$AF_ROOT/bin/af" notify "recovered: $summary"
+  else "$AF_ROOT/bin/af" notify "$status"; fi
+  echo "$status" > "$AF_STATE/health.last"
+fi
+
+(( quiet )) || { echo "$summary"; [[ "$status" == ok ]] || warn "$status"; }
+[[ "$status" == ok ]]

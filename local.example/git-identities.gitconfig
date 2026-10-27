@@ -1,0 +1,18 @@
+# Example: keep work and personal git identities separate by directory.
+# Include from ~/.gitconfig (or your dotfiles git config):
+#
+#   [includeIf "gitdir:~/Developer/work/"]
+#       path = ~/.gitconfig-work
+#
+# ~/.gitconfig-work:
+#   [user]
+#       email = you@work.example
+#   [core]
+#       sshCommand = ssh -i ~/.ssh/github-work
+#
+# And an SSH alias so work clones use the work key:
+#   Host github-work
+#       HostName github.com
+#       User git
+#       IdentityFile ~/.ssh/github-work
+#       IdentitiesOnly yes

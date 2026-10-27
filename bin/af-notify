@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Send a notification via AF_NOTIFY_CMD (and log it): af notify "message"
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+msg="[$(hostname -s 2>/dev/null || hostname)] $*"
+printf '%s %s\n' "$(date '+%F %T')" "$msg" >> "$AF_LOGS/notify.log"
+if [[ -n "${AF_NOTIFY_CMD:-}" ]]; then
+  # shellcheck disable=SC2086  # allow "cmd --flag" in the setting
+  $AF_NOTIFY_CMD "$msg" || warn "notify command failed"
+fi

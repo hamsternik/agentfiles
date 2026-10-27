@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest   # macOS minutes cost 10x; syntax and lint checks don't need a Mac
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: make lint
+      - name: bash syntax
+        run: for f in bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/*; do bash -n "$f"; done
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: local/ is never tracked
+        run: test -z "$(git ls-files local/)"
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

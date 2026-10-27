@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Simulators in a slot, plus screenshots/video: af sim run|shot|record
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+#   af sim run [--device "iPhone 16"] -- <cmd>   boot a slot-owned simulator, export SIM_UDID, run, shut down
+#   af sim shot <file.png> [udid]
+#   af sim record <file.mp4> [udid]               (Ctrl-C to stop)
+# Each slot index gets its own device (af-sim-0, af-sim-1, ...) so parallel
+# agents never share a simulator.
+require_macos
+
+device_for_slot() {
+  local idx="$1" devtype="$2" name="af-sim-$1" udid runtime
+  udid="$(xcrun simctl list devices -j | jq -r --arg n "$name" '[.devices[][] | select(.name == $n and .isAvailable)] | first | .udid // empty')"
+  if [[ -z "$udid" ]]; then
+    runtime="$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier // empty')"
+    [[ -n "$runtime" ]] || die "No iOS simulator runtime installed (see apple/runtimes.txt)"
+    udid="$(xcrun simctl create "$name" "$devtype" "$runtime")"
+  fi
+  echo "$udid"
+}
+
+case "${1:-}" in
+  run)
+    shift
+    devtype="${AF_SIM_DEVICE_TYPE:-iPhone 16}"
+    if [[ "${1:-}" == --device ]]; then devtype="$2"; shift 2; fi
+    [[ "${1:-}" == -- ]] && shift
+    [[ $# -gt 0 ]] || die "usage: af sim run [--device NAME] -- <cmd>"
+    exec "$AF_ROOT/bin/af" slot simulator -- "$AF_ROOT/bin/af" sim _in-slot "$devtype" "$@"
+    ;;
+  _in-slot)
+    shift; devtype="$1"; shift
+    udid="$(device_for_slot "$AF_SLOT_INDEX" "$devtype")"
+    xcrun simctl boot "$udid" 2>/dev/null || true
+    xcrun simctl bootstatus "$udid" -b >/dev/null
+    export SIM_UDID="$udid"
+    trap 'xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true' EXIT
+    log "simulator af-sim-$AF_SLOT_INDEX ($devtype) booted: $udid"
+    "$@"
+    ;;
+  shot)   xcrun simctl io "${3:-${SIM_UDID:-booted}}" screenshot "${2:?file.png}" ;;
+  record) exec xcrun simctl io "${3:-${SIM_UDID:-booted}}" recordVideo --codec=h264 --force "${2:?file.mp4}" ;;
+  *) die "usage: af sim run|shot|record" ;;
+esac

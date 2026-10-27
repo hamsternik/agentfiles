@@ -1,0 +1,12 @@
+# Projects this machine runs. Gitignored; never commit real project names here.
+# Each project repo may describe its own needs in .agent/project.yaml
+# (see schemas/project.example.yaml).
+projects:
+  - name: example-app
+    repo: git@github.com:you/example-app.git
+    enabled: true
+
+  - name: example-crawler
+    # A work repo cloned with the work identity via an SSH host alias:
+    repo: git@github-work:your-org/example-crawler.git
+    enabled: false

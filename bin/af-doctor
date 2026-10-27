@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Check this machine against its role: af doctor
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+role="$(cat "$AF_STATE/role" 2>/dev/null || echo unknown)"
+fails=0
+check() { local what="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$what"; else warn "$what"; fails=$((fails + 1)); fi; }
+
+echo "role: $role   repo: $AF_ROOT"
+check "local/machine.env present"   test -f "$AF_LOCAL/machine.env"
+check "git hooks installed"         bash -c "[[ \$(git -C '$AF_ROOT' config core.hooksPath) == hooks ]]"
+check "gitleaks installed"          have gitleaks
+check "tailscale connected"         tailscale status
+
+case "$role" in
+  host)
+    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/host/Brewfile"
+    check "never sleeps on AC"      bash -c "pmset -g custom | awk '/AC Power/,0' | grep -Eq '^ *sleep +0'"
+    check "Remote Login on"         bash -c "systemsetup -getremotelogin 2>/dev/null | grep -q On || nc -z localhost 22"
+    check "Xcode installed"         xcodebuild -version
+    check "Docker (OrbStack) up"    docker info
+    if [[ "${AF_US_GATEWAY_ENABLED:-0}" == 1 ]]; then check "US gateway exits in US" "$AF_ROOT/bin/af" gateway test; fi
+    check "health agent loaded"     launchctl print "gui/$(id -u)/local.agentfiles.health"
+    check "cleanup agent loaded"    launchctl print "gui/$(id -u)/local.agentfiles.cleanup"
+    check "claude CLI"              have claude
+    check "gh authenticated"        gh auth status
+    "$AF_ROOT/bin/af" slot status || true
+    "$AF_ROOT/bin/af" health || true
+    ;;
+  cockpit)
+    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/cockpit/Brewfile"
+    check "ssh include configured"  grep -qs "Include $AF_HOME/ssh_config" "$HOME/.ssh/config"
+    check "host reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
+    check "US proxy reachable"      curl -fsS --max-time 10 -x "${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}" https://am.i.mullvad.net/json
+    ;;
+  *) warn "Unknown role; run ./bootstrap.sh <host|cockpit> first." ;;
+esac
+
+if (( fails )); then warn "$fails check(s) need attention"; exit 1; fi
+ok "all checks passed"

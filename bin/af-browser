@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Open a dedicated Chrome profile (us = via US gateway): af browser <profile> [url]
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# Profiles live in ~/.agentfiles/chrome-profiles/<name>, never your personal one.
+#   af browser us [url]     -> exits via the US gateway (AF_US_PROXY_URL)
+#   af browser agent [url]  -> Claude in Chrome profile, normal network
+require_macos
+profile="${1:?profile name}"; url="${2:-}"
+dir="$AF_HOME/chrome-profiles/$profile"
+mkdir -p "$dir"
+args=(--user-data-dir="$dir" --no-first-run)
+if [[ "$profile" == us ]]; then
+  proxy="${AF_US_PROXY_URL:-http://127.0.0.1:$AF_US_PROXY_PORT}"
+  args+=(--proxy-server="$proxy")
+  log "Chrome profile 'us' via $proxy"
+fi
+[[ -n "$url" ]] && args+=("$url")
+open -na "Google Chrome" --args "${args[@]}"

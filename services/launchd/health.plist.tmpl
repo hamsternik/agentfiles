@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by roles/host/steps/90-services.sh. Edit the template, not the copy in ~/Library/LaunchAgents. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{{AF_LABEL}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{AF_ROOT}}/bin/af</string>
+    <string>health</string>
+    <string>--quiet</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>{{AF_LOGS}}/health.out.log</string>
+  <key>StandardErrorPath</key><string>{{AF_LOGS}}/health.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Projects from local/projects.yaml: af projects list|sync|install-jobs
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# Which projects run here is machine-local (local/projects.yaml, gitignored).
+# What each project needs is declared in its own repo: .agent/project.yaml.
+have yq || die "yq required (brew install yq)"
+list_file="$AF_LOCAL/projects.yaml"
+[[ -f "$list_file" ]] || die "No $list_file (copy local.example/projects.yaml)"
+
+enabled() { yq -r '.projects[] | select(.enabled == true) | .name + " " + .repo' "$list_file"; }
+proj_dir() { echo "$AF_DEVELOPER_DIR/$1"; }
+
+case "${1:-list}" in
+  list)
+    while read -r name repo; do
+      dir="$(proj_dir "$name")"
+      state="missing"; [[ -d "$dir/.git" ]] && state="cloned"
+      manifest="-"; [[ -f "$dir/.agent/project.yaml" ]] && manifest="manifest"
+      printf '%-28s %-8s %-9s %s\n' "$name" "$state" "$manifest" "$repo"
+    done < <(enabled)
+    ;;
+  sync)
+    while read -r name repo; do
+      dir="$(proj_dir "$name")"
+      if [[ -d "$dir/.git" ]]; then run git -C "$dir" fetch --prune --quiet && ok "$name fetched"
+      else run git clone "$repo" "$dir" && ok "$name cloned"; fi
+    done < <(enabled)
+    ;;
+  install-jobs)
+    require_macos
+    agents="$HOME/Library/LaunchAgents"
+    # Remove previously generated job agents, then regenerate from manifests.
+    for p in "$agents"/local.agentfiles.job.*.plist; do
+      [[ -e "$p" ]] || continue
+      run launchctl bootout "gui/$(id -u)/$(basename "$p" .plist)" 2>/dev/null || true
+      run rm -f "$p"
+    done
+    while read -r name _; do
+      m="$(proj_dir "$name")/.agent/project.yaml"
+      [[ -f "$m" ]] || continue
+      n="$(yq '.jobs | length' "$m")"
+      for ((i = 0; i < n; i++)); do
+        job="$(yq -r ".jobs[$i].name" "$m")"
+        label="local.agentfiles.job.$name.$job"
+        interval="$(yq -r ".jobs[$i].schedule.interval_seconds // \"\"" "$m")"
+        hour="$(yq -r ".jobs[$i].schedule.hour // \"\"" "$m")"
+        minute="$(yq -r ".jobs[$i].schedule.minute // 0" "$m")"
+        if [[ -n "$interval" ]]; then
+          sched="<key>StartInterval</key><integer>$interval</integer>"
+        elif [[ -n "$hour" ]]; then
+          sched="<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>"
+        else
+          warn "$name/$job has no schedule; skipped"; continue
+        fi
+        plist="$agents/$label.plist"
+        if [[ "$AF_DRY_RUN" != 1 ]]; then
+          cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key><array>
+    <string>$AF_ROOT/bin/af</string><string>job</string><string>$name</string><string>$job</string>
+  </array>
+  $sched
+  <key>StandardOutPath</key><string>$AF_LOGS/job.$name.$job.out.log</string>
+  <key>StandardErrorPath</key><string>$AF_LOGS/job.$name.$job.err.log</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict></plist>
+PLIST
+        fi
+        run launchctl bootstrap "gui/$(id -u)" "$plist"
+        ok "scheduled $label"
+      done
+    done < <(enabled)
+    ;;
+  *) die "usage: af projects list|sync|install-jobs" ;;
+esac

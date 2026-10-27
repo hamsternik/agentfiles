@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Run a command holding a resource slot: af slot <xcodebuild|simulator|browser> -- <cmd>
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# Slots are directories created with mkdir (atomic). Each holds the owner's pid,
+# so slots left behind by a crashed process are reclaimed automatically.
+#
+#   af slot xcodebuild -- xcodebuild test ...
+#   af slot status
+# The child sees AF_SLOT_KIND and AF_SLOT_INDEX (0-based), e.g. to pick a simulator.
+
+slots_root="$AF_STATE/slots"
+
+limit_for() {
+  local var="AF_MAX_$(tr '[:lower:]' '[:upper:]' <<<"$1")"
+  [[ -n "${!var:-}" ]] || die "No limit $var configured for slot kind '$1'"
+  echo "${!var}"
+}
+
+reap_stale() {
+  local dir="$1" pid
+  pid="$(cat "$dir/pid" 2>/dev/null || true)"
+  if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+    rm -rf "$dir"
+  fi
+}
+
+status() {
+  local kind dir n
+  for kind in xcodebuild simulator browser; do
+    n=0
+    for dir in "$slots_root/$kind"/*.lock; do
+      [[ -d "$dir" ]] || continue
+      reap_stale "$dir"
+      [[ -d "$dir" ]] && n=$((n + 1))
+    done
+    printf '%-11s %s/%s in use\n' "$kind" "$n" "$(limit_for "$kind")"
+  done
+}
+
+[[ "${1:-}" == status ]] && { status; exit 0; }
+
+kind="${1:-}"; shift || true
+wait_s="$AF_SLOT_WAIT_SECONDS"
+if [[ "${1:-}" == --wait ]]; then wait_s="$2"; shift 2; fi
+[[ "${1:-}" == -- ]] && shift
+[[ -n "$kind" && $# -gt 0 ]] || die "usage: af slot <kind> [--wait SECONDS] -- <command...>"
+
+max="$(limit_for "$kind")"
+if [[ "$kind" != browser && -f "$AF_STATE/disk-blocked" ]]; then
+  die "Disk above ${AF_DISK_BLOCK_PCT}% used; refusing new $kind work. Run 'af cleanup --apply'."
+fi
+
+mkdir -p "$slots_root/$kind"
+deadline=$(( $(date +%s) + wait_s ))
+held=""
+announced=0
+while :; do
+  for ((i = 0; i < max; i++)); do
+    dir="$slots_root/$kind/$i.lock"
+    [[ -d "$dir" ]] && reap_stale "$dir"
+    if mkdir "$dir" 2>/dev/null; then
+      echo $$ > "$dir/pid"
+      printf '%s\n' "$*" > "$dir/cmd"
+      held="$dir"; export AF_SLOT_KIND="$kind" AF_SLOT_INDEX="$i"
+      break 2
+    fi
+  done
+  (( $(date +%s) < deadline )) || die "Timed out after ${wait_s}s waiting for a $kind slot"
+  (( announced )) || { log "waiting for a $kind slot ($max max)..."; announced=1; }
+  sleep 2
+done
+
+cleanup() { rm -rf "$held"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+"$@"

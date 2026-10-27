@@ -1,0 +1,6 @@
+# Simulator platforms to download with `xcodebuild -downloadPlatform <name>`.
+# Keep this short: each runtime costs several GB of disk.
+iOS
+# watchOS
+# visionOS
+# tvOS

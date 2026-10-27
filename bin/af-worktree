@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Agent worktrees with limits: af worktree new|list|rm
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+#   af worktree new <repo-dir> <branch> [base]   -> prints the new worktree path
+#   af worktree list
+#   af worktree rm <worktree-path>               -> also deletes its build caches
+root="$AF_WORKTREES_DIR"
+
+count() { find "$root" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' '; }
+
+case "${1:-}" in
+  new)
+    repo="${2:?repo dir}"; branch="${3:?branch}"; base="${4:-HEAD}"
+    [[ -f "$AF_STATE/disk-blocked" ]] && die "Disk blocked; run 'af cleanup --apply' first."
+    (( $(count) < AF_MAX_WORKTREES )) || die "Already $(count) worktrees (max $AF_MAX_WORKTREES). Remove one first."
+    name="$(basename "$(git -C "$repo" rev-parse --show-toplevel)")"
+    path="$root/$name/${branch//\//-}"
+    mkdir -p "$root/$name"
+    git -C "$repo" worktree add -b "$branch" "$path" "$base" >&2
+    # Keep per-worktree build output out of git, in the shared exclude file.
+    excl="$(git -C "$path" rev-parse --git-common-dir)/info/exclude"
+    mkdir -p "$(dirname "$excl")"
+    grep -qxF '.derived/' "$excl" 2>/dev/null || echo '.derived/' >> "$excl"
+    echo "$path"
+    ;;
+  list)
+    find "$root" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort
+    echo "($(count)/$AF_MAX_WORKTREES)" >&2
+    ;;
+  rm)
+    path="${2:?worktree path}"
+    git -C "$path" worktree remove --force "$path"
+    rm -rf "$path"   # in case untracked caches were left
+    ok "removed $path"
+    ;;
+  *) die "usage: af worktree new|list|rm" ;;
+esac

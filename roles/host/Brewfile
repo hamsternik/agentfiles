@@ -1,0 +1,27 @@
+# Agent host packages. Deliberately minimal: GUI apps you use daily stay in
+# your personal dotfiles Brewfile, not here.
+
+# Core CLI (repo tools like gitleaks/yq/jq come from ../../Brewfile)
+brew "git"
+brew "gh"
+brew "tmux"
+brew "mosh"
+
+# Runtimes for agents
+brew "node"
+brew "python"
+
+# Apple toolchain management
+brew "xcodes"
+brew "aria2"          # speeds up xcodes downloads
+
+# Network: CLI daemon runs as a system service, starts before login,
+# no menu bar app needed on a headless box.
+brew "tailscale"
+
+# Apps
+cask "orbstack"       # lighter than Docker Desktop on 16 GB
+cask "google-chrome"  # real Chrome for Claude in Chrome profiles
+cask "claude"         # Claude desktop app
+cask "claude-code"    # Claude Code CLI
+cask "aldente"        # cap battery charge on an always-plugged laptop

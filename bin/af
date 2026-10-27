@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# af — agentfiles command dispatcher.  `af help` lists commands.
+set -euo pipefail
+self="${BASH_SOURCE[0]}"
+while [[ -L "$self" ]]; do
+  target="$(readlink "$self")"
+  [[ "$target" == /* ]] && self="$target" || self="$(dirname "$self")/$target"
+done
+AF_ROOT="$(cd "$(dirname "$self")/.." && pwd)"
+export AF_ROOT
+
+cmd="${1:-help}"; shift || true
+if [[ "$cmd" == help || "$cmd" == -h || "$cmd" == --help ]]; then
+  echo "usage: af <command> [args]"
+  echo
+  for f in "$AF_ROOT"/bin/af-*; do
+    printf '  %-10s %s\n' "${f##*/af-}" "$(sed -n '2s/^# *//p' "$f")"
+  done
+  exit 0
+fi
+[[ -x "$AF_ROOT/bin/af-$cmd" ]] || { echo "af: unknown command '$cmd' (try: af help)" >&2; exit 2; }
+exec "$AF_ROOT/bin/af-$cmd" "$@"

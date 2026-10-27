@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Attach to the host from the cockpit: af attach [tmux-session] | af attach --screen
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+host="${AF_HOST_TAILNET:?set AF_HOST_TAILNET in local/machine.env}"
+if [[ "${1:-}" == --screen ]]; then
+  exec open "vnc://$host"
+fi
+session="${1:-main}"
+if have mosh; then
+  exec mosh agent -- tmux new -A -s "$session"
+else
+  exec ssh -t agent tmux new -A -s "$session"
+fi

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# agentfiles pre-commit: block local/, secrets (gitleaks) and denylisted terms.
+# Installed with `make hooks` (git config core.hooksPath hooks).
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+fail() { printf '\033[31mpre-commit blocked:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# 1. Machine-local files never enter the repo.
+if git diff --cached --name-only | grep -q '^local/'; then
+  fail "files under local/ are staged. They are machine-local; unstage them."
+fi
+
+# 2. Secrets.
+command -v gitleaks >/dev/null || fail "gitleaks not installed. Run: make deps"
+gitleaks git --pre-commit --staged --redact --no-banner --config "$root/.gitleaks.toml" "$root" \
+  || fail "gitleaks found a possible secret (see above)"
+
+# 3. Job-specific / private terms from local/denylist.txt (itself never committed).
+deny="$root/local/denylist.txt"
+if [[ -f "$deny" ]]; then
+  terms="$(grep -v '^[[:space:]]*#' "$deny" | sed '/^[[:space:]]*$/d' || true)"
+  if [[ -n "$terms" ]]; then
+    hits="$( { git diff --cached --name-only; git diff --cached -U0 | grep '^+' | grep -v '^+++'; } \
+             | grep -inF -f <(printf '%s\n' "$terms") || true)"
+    [[ -z "$hits" ]] || fail "denylisted term in staged changes:
+$hits"
+  fi
+fi

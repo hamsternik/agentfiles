@@ -1,0 +1,6 @@
+# Terms that must never be committed to agentfiles (one per line, case-insensitive).
+# The pre-commit hook blocks any staged change containing them.
+# Put employer names, client names, work domains, internal hostnames, work emails here.
+# This file lives in local/ and is never committed itself.
+your-employer
+internal.example.com

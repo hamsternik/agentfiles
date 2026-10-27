@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# US egress gateway (gluetun + VPN in OrbStack): af gateway up|down|status|logs|test
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# Secrets come from the Keychain at start-up and are never written to disk.
+dir="$AF_ROOT/services/us-gateway"
+compose() {
+  local files=(-f "$dir/compose.yaml")
+  if [[ -n "${AF_TAILSCALE_IP:-}" ]]; then files+=(-f "$dir/compose.tailnet.yaml"); fi
+  docker compose -p af-us-gateway "${files[@]}" "$@"
+}
+
+export AF_US_PROXY_PORT
+export AF_US_GATEWAY_PROVIDER="${AF_US_GATEWAY_PROVIDER:-mullvad}"
+export AF_US_GATEWAY_COUNTRIES="${AF_US_GATEWAY_COUNTRIES:-USA}"
+export AF_US_GATEWAY_CITIES="${AF_US_GATEWAY_CITIES:-}"
+AF_TAILSCALE_IP="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+export AF_TAILSCALE_IP
+
+case "${1:-status}" in
+  up)
+    WIREGUARD_PRIVATE_KEY="$("$AF_ROOT/bin/af" secret get us-gateway/wireguard-private-key)"
+    WIREGUARD_ADDRESSES="$("$AF_ROOT/bin/af" secret get us-gateway/wireguard-addresses)"
+    export WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES
+    [[ -n "$AF_TAILSCALE_IP" ]] || warn "No Tailscale IP yet: proxy bound to localhost only (health check retries later)."
+    compose up -d
+    ok "gateway up (proxy :$AF_US_PROXY_PORT on 127.0.0.1${AF_TAILSCALE_IP:+ and $AF_TAILSCALE_IP})"
+    ;;
+  down)   compose down ;;
+  status) compose ps ;;
+  logs)   compose logs --tail 100 -f ;;
+  test)
+    # Expect a US exit through the VPN provider.
+    out="$(curl -fsS --max-time 15 -x "http://127.0.0.1:$AF_US_PROXY_PORT" https://am.i.mullvad.net/json)"
+    echo "$out" | jq -c '{ip, country, city, mullvad_exit_ip}'
+    echo "$out" | jq -e '.mullvad_exit_ip == true and (.country | test("United States|USA"))' >/dev/null
+    ;;
+  *) die "usage: af gateway up|down|status|logs|test" ;;
+esac

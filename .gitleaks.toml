@@ -1,0 +1,23 @@
+# gitleaks config: default rules plus a few specific to this kind of repo.
+title = "agentfiles"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "wireguard-private-key"
+description = "WireGuard private key"
+regex = '''(?i)(privatekey|wireguard_private_key)\s*[:=]\s*["']?[A-Za-z0-9+/]{42,43}=["']?'''
+tags = ["vpn"]
+
+[[rules]]
+id = "mullvad-account-number"
+description = "Mullvad account number"
+regex = '''(?i)mullvad.{0,40}\b\d{16}\b'''
+tags = ["vpn"]
+
+[[rules]]
+id = "tailscale-key"
+description = "Tailscale auth/API key"
+regex = '''tskey-(auth|api|client|webhook)-[A-Za-z0-9_-]{10,}'''
+tags = ["network"]

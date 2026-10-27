@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# xcodebuild in an xcodebuild slot, with per-worktree DerivedData: af build <args>
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# DerivedData goes to <worktree>/.derived so it is deleted with the worktree.
+top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+exec "$AF_ROOT/bin/af" slot xcodebuild -- xcodebuild -derivedDataPath "$top/.derived" "$@"

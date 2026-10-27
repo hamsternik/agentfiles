@@ -1,0 +1,14 @@
+# Machine-local config, secrets, project lists. Never committed.
+/local/
+*.env
+!*.env.example
+!config/*.env
+!local.example/*.env
+
+# Runtime state
+/state/
+*.log
+
+.DS_Store
+**/.DS_Store
+.claude/settings.local.json

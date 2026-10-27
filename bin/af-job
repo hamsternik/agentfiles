@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Run one project job as declared in its manifest: af job <project> <job>
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+# Applies the manifest's needs (US gateway env, browser/simulator slots),
+# logs output, and notifies on failure. launchd calls this; you can too.
+have yq || die "yq required"
+name="${1:?project}"; job="${2:?job}"
+dir="$AF_DEVELOPER_DIR/$name"
+m="$dir/.agent/project.yaml"
+[[ -f "$m" ]] || die "No manifest at $m"
+
+cmd="$(yq -r ".jobs[] | select(.name == \"$job\") | .command" "$m")"
+[[ -n "$cmd" && "$cmd" != null ]] || die "No job '$job' in $m"
+
+if [[ "$(yq -r '.needs.us_gateway // false' "$m")" == true ]]; then
+  proxy="${AF_US_PROXY_URL:-http://127.0.0.1:$AF_US_PROXY_PORT}"
+  export HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" AF_US_PROXY_URL="$proxy"
+  "$AF_ROOT/bin/af" gateway test >/dev/null 2>&1 || die "US gateway not healthy; refusing to run $name/$job without it"
+fi
+
+# Extra env from the manifest (values only, no secrets: secrets come from `af secret get`).
+while IFS='=' read -r k v; do
+  [[ -n "$k" ]] && export "$k=$v"
+done < <(yq -r ".jobs[] | select(.name == \"$job\") | .env // {} | to_entries | .[] | .key + \"=\" + (.value | tostring)" "$m")
+
+wrap=()
+[[ "$(yq -r '.needs.browser // false' "$m")" == true ]] && wrap=("$AF_ROOT/bin/af" slot browser --)
+
+log "job $name/$job: $cmd"
+cd "$dir"
+start=$(date +%s)
+if ${wrap[@]+"${wrap[@]}"} bash -c "$cmd"; then
+  ok "job $name/$job done in $(( $(date +%s) - start ))s"
+else
+  rc=$?
+  "$AF_ROOT/bin/af" notify "job $name/$job failed (exit $rc); see $AF_LOGS/job.$name.$job.err.log"
+  exit "$rc"
+fi

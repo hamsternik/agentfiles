@@ -1,0 +1,24 @@
+# .agent/project.yaml — lives in EACH PROJECT'S repo, not in agentfiles.
+# Declares what the project needs from an agent host. agentfiles reads it via
+# `af projects install-jobs` and `af job <project> <job>`.
+# Keep secrets out: reference them by name and read them with `af secret get`.
+
+needs:
+  us_gateway: true     # jobs get HTTP(S)_PROXY pointing at the US gateway
+  browser: true        # jobs hold a browser slot while running
+  simulator: false     # agents should use `af sim run -- ...`
+  xcodebuild: false    # agents should use `af build ...`
+
+jobs:
+  - name: crawl
+    command: "npm run crawl"
+    schedule:
+      interval_seconds: 21600   # every 6h  (or: hour: 3, minute: 15 for daily)
+    env:
+      CRAWL_CONCURRENCY: "2"
+
+# Commands agents run in a fresh worktree. Read by agents (via CLAUDE.md), not by af.
+agent:
+  setup: "npm ci"
+  test: "npm test"
+  validate: "npm run e2e"        # e.g. Playwright run that saves screenshots/video

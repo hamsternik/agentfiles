@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Reclaim disk: old DerivedData, simulators, Docker images, logs (dry-run unless --apply)
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+apply=0; [[ "${1:-}" == --apply ]] && apply=1
+(( apply )) || export AF_DRY_RUN=1
+before="$(df -P "$HOME" | awk 'NR==2 {print $5}')"
+
+log "DerivedData older than ${AF_DERIVED_DATA_MAX_AGE_DAYS}d"
+dd="$HOME/Library/Developer/Xcode/DerivedData"
+if [[ -d "$dd" ]]; then
+  while IFS= read -r d; do run rm -rf "$d"; done \
+    < <(find "$dd" -mindepth 1 -maxdepth 1 -type d -mtime +"$AF_DERIVED_DATA_MAX_AGE_DAYS")
+fi
+
+if have xcrun && is_macos; then
+  log "Simulators"
+  run xcrun simctl delete unavailable
+  if [[ -z "$(ls -A "$AF_STATE/slots/simulator" 2>/dev/null)" ]]; then
+    run xcrun simctl shutdown all
+  else
+    warn "simulator slots in use; not shutting simulators down"
+  fi
+fi
+
+if have docker && docker info >/dev/null 2>&1; then
+  log "Docker images/build cache older than $AF_DOCKER_PRUNE_UNTIL"
+  run docker image prune -af --filter "until=$AF_DOCKER_PRUNE_UNTIL"
+  run docker builder prune -f --filter "until=$AF_DOCKER_PRUNE_UNTIL"
+fi
+
+log "Logs older than ${AF_LOG_MAX_AGE_DAYS}d"
+while IFS= read -r f; do run rm -f "$f"; done \
+  < <(find "$AF_LOGS" -type f -mtime +"$AF_LOG_MAX_AGE_DAYS" 2>/dev/null)
+
+after="$(df -P "$HOME" | awk 'NR==2 {print $5}')"
+if (( apply )); then ok "disk used: $before -> $after"; else ok "dry run (disk used $before). Re-run with --apply."; fi
