@@ -12,9 +12,7 @@ export AF_LOGS AF_ROOT
 load_agent() {
   local label="$1" tmpl="$2" dst="$agents_dir/$1.plist"
   AF_LABEL="$label" render_template "$tmpl" "$dst"
-  run launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-  run launchctl bootstrap "gui/$(id -u)" "$dst"
-  ok "loaded $label"
+  load_launch_agent "$label" "$dst"
 }
 
 AF_LABEL=""

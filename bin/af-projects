@@ -38,7 +38,10 @@ case "${1:-list}" in
     # Remove previously generated job agents, then regenerate from manifests.
     for p in "$agents"/local.agentfiles.job.*.plist; do
       [[ -e "$p" ]] || continue
-      run launchctl bootout "gui/$(id -u)/$(basename "$p" .plist)" 2>/dev/null || true
+      label="$(basename "$p" .plist)"
+      if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+        run launchctl bootout "gui/$(id -u)/$label" || true
+      fi
       run rm -f "$p"
     done
     while read -r name _; do
@@ -77,7 +80,7 @@ case "${1:-list}" in
 </dict></plist>
 PLIST
         fi
-        run launchctl bootstrap "gui/$(id -u)" "$plist"
+        load_launch_agent "$label" "$plist"
         ok "scheduled $label"
       done
     done < <(enabled)

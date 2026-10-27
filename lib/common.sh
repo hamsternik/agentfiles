@@ -67,6 +67,32 @@ af_load_config() {
   [[ "$AF_DRY_RUN" == 1 ]] || mkdir -p "$AF_STATE" "$AF_LOGS"
 }
 
+# (Re)load a LaunchAgent in the GUI session. Without a GUI login (e.g. over SSH
+# before the FileVault unlock) gui/<uid> does not exist; launchd loads the plist
+# from ~/Library/LaunchAgents at the next login anyway. After a bootout the job
+# stays visible for a moment, and a bootstrap meanwhile fails with error 5.
+load_launch_agent() {  # load_launch_agent <label> <plist>
+  local label="$1" plist="$2" uid _
+  uid="$(id -u)"
+  if ! launchctl print "gui/$uid" >/dev/null 2>&1; then
+    warn "No GUI session: $label loads at the next login."
+    return 0
+  fi
+  if launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
+    run launchctl bootout "gui/$uid/$label" || true
+    if [[ "$AF_DRY_RUN" != 1 ]]; then
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        launchctl print "gui/$uid/$label" >/dev/null 2>&1 || break
+        sleep 0.5
+      done
+    fi
+  fi
+  run launchctl enable "gui/$uid/$label"
+  run launchctl bootstrap "gui/$uid" "$plist" \
+    || { sleep 1; run launchctl bootstrap "gui/$uid" "$plist"; }
+  [[ "$AF_DRY_RUN" == 1 ]] || ok "loaded $label"
+}
+
 # Render a template by replacing {{VAR}} with the value of $VAR.
 render_template() {
   local src="$1" dst="$2" content var
