@@ -1,7 +1,7 @@
 # agentfiles — plan
 
 Turn a spare Mac into an always-on **agent host**, driven entirely from a
-main laptop (the **cockpit**), and make the whole setup reproducible from
+main laptop (the **master**), and make the whole setup reproducible from
 this repo on any future machine.
 
 ## Why
@@ -14,7 +14,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 
 ## Principles
 
-1. **Cockpit and engine.** The laptop (and phone) only *drive*. Everything
+1. **Master and engine.** The laptop (and phone) only *drive*. Everything
    long-running lives on the host.
 2. **Project-agnostic.** This repo provides capabilities (gateway, slots,
    worktrees, schedules, health). Projects describe their own needs in
@@ -32,7 +32,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 ## Architecture
 
 ```
- cockpit (main laptop, phone)                  host (always-on Mac)
+ master (main laptop, phone)                   slave (always-on Mac)
  ─────────────────────────────                 ───────────────────────────────────
  Tailscale app ───────── tailnet ──────────── tailscaled (system daemon)
  af attach  ── ssh/mosh ──────────────────────▶ tmux sessions: Claude Code, shells
@@ -47,13 +47,13 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 
 | Area | Decision |
 |---|---|
-| Roles | `host` = always-on agent machine; `cockpit` = the machine you drive it from |
-| Network | Tailscale. Host runs the CLI daemon (up before login); cockpit runs the app |
+| Roles | `slave` = always-on agent machine; `master` = the machine you drive it from |
+| Network | Tailscale. Host runs the CLI daemon (up before login); master runs the app |
 | Terminal | SSH + tmux (mosh when available) via `af attach` |
 | GUI | macOS Screen Sharing over Tailscale (`af attach --screen`) |
 | Async control | GitHub issues and PRs |
 | Resource limits (16 GB / 512 GB) | 1 Xcode build, ≤2 simulators, ≤2 browsers, ≤6 worktrees; disk warn 80% / block 90% |
-| Apple toolchain | Pinned Xcode via `xcodes`, short runtime list, simulator-only builds at first; signing stays on the cockpit |
+| Apple toolchain | Pinned Xcode via `xcodes`, short runtime list, simulator-only builds at first; signing stays on the master |
 | Browsers | Headless Playwright for scripted work; dedicated Chrome profiles (`us`, `agent`) for Claude in Chrome; Chrome for Testing for validation |
 | US egress | gluetun + WireGuard VPN in OrbStack with kill switch; HTTP proxy on localhost and the tailnet IP only |
 | Secrets | macOS Keychain via `af secret`; never in git or `local/` |
@@ -62,9 +62,9 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 
 ## Phases
 
-### Phase 0 — Prepare (on the cockpit)
+### Phase 0 — Prepare (on the master)
 - [ ] Push this repo to a **private** GitHub repo; run `make hooks`.
-- [ ] Fill `local/denylist.txt` on the cockpit with employer, client and work-domain terms.
+- [ ] Fill `local/denylist.txt` on the master with employer, client and work-domain terms.
 - [ ] List what moves to the host: long-running jobs, crawlers, anything needing US egress.
 - [ ] In the VPN account, generate a WireGuard key for the host (uses one device slot).
 - [ ] Decide FileVault on/off for the host (see runbook: *Reboots and FileVault*).
@@ -74,12 +74,12 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 - [ ] Erase the spare Mac; install the newest macOS it supports.
 - [ ] Create an admin user for agents (e.g. `agent`). Skip iCloud on this machine.
 - [ ] Install Command Line Tools: `xcode-select --install`.
-- [ ] `git clone` this repo over HTTPS; run `./bootstrap.sh host` (first run creates `local/`).
-- [ ] Fill `local/machine.env`, then `make host`. Work through the printed manual steps.
+- [ ] `git clone` this repo over HTTPS; run `./bootstrap.sh slave` (first run creates `local/`).
+- [ ] Fill `local/machine.env`, then `make slave`. Work through the printed manual steps.
 - [ ] `af doctor` passes the base checks (sleep, Remote Login, Tailscale, Homebrew).
 
-### Phase 2 — Access from the cockpit
-- [ ] On the cockpit: clone the repo, fill `local/machine.env`, `make cockpit`.
+### Phase 2 — Access from the master
+- [ ] On the master: clone the repo, fill `local/machine.env`, `make master`.
 - [ ] Add the `Include` line to `~/.ssh/config`; `ssh-copy-id agent`.
 - [ ] `af attach` opens a tmux session on the host; `af attach --screen` opens Screen Sharing.
 - [ ] Reach the host from the phone over Tailscale (SSH app + tmux).
@@ -88,8 +88,8 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 ### Phase 3 — US gateway
 - [ ] On the host: `af secret set us-gateway/wireguard-private-key` and `.../wireguard-addresses`.
 - [ ] `af gateway up`, then `af gateway test` shows a US exit through the VPN.
-- [ ] On the cockpit: `AF_US_PROXY_URL=http://<host>:8888`, then `af browser us` opens US stores.
-- [ ] Once that is reliable, turn off the system-wide VPN on the cockpit (keep the app as fallback).
+- [ ] On the master: `AF_US_PROXY_URL=http://<host>:8888`, then `af browser us` opens US stores.
+- [ ] Once that is reliable, turn off the system-wide VPN on the master (keep the app as fallback).
 
 ### Phase 4 — Migrate the first scheduled project
 - [ ] Add `.agent/project.yaml` to the project's own repo (see `schemas/project.example.yaml`).
@@ -97,7 +97,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 - [ ] Run once by hand: `af job <project> <job>`; check logs in `~/.agentfiles/logs`.
 - [ ] `af projects install-jobs`; set `AF_NOTIFY_CMD` (Slack webhook, Telegram or ntfy script).
 - [ ] Watch a week of `health.log`; tune `local/limits.env` from real numbers.
-- [ ] Repeat for the remaining long-running projects; remove their schedules from the cockpit.
+- [ ] Repeat for the remaining long-running projects; remove their schedules from the master.
 
 ### Phase 5 — Interactive agent work on the host
 - [ ] Sign in to Claude Code and the Claude desktop app on the host; `gh auth login` with scoped access.

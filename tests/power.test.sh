@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for roles/host/steps/15-power.sh with stubbed sudo/pmset/systemsetup/uname.
+# Tests for roles/slave/steps/15-power.sh with stubbed sudo/pmset/systemsetup/uname.
 # Run: make test   (uses /bin/bash, like a fresh Mac)
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-step="$repo/roles/host/steps/15-power.sh"
+step="$repo/roles/slave/steps/15-power.sh"
 fails=0
 
 # One sandbox per case: stub bin/, fake AF_HOME and local/, a call log.

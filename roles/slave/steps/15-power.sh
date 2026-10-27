@@ -6,7 +6,7 @@ af_load_config
 
 # Power for an always-on machine: never sleep on AC, wake for network, restart
 # after a freeze. With AF_LID_CLOSED=1 it also stays awake with the lid shut.
-# Run on its own with: ./bootstrap.sh host --only 15
+# Run on its own with: ./bootstrap.sh slave --only 15
 require_macos
 
 log "Power: never sleep on AC, wake for network, restart after freeze"

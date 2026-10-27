@@ -18,8 +18,8 @@ check "gitleaks installed"          have gitleaks
 check "tailscale connected"         tailscale status
 
 case "$role" in
-  host)
-    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/host/Brewfile"
+  slave)
+    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/slave/Brewfile"
     check "never sleeps on AC"      bash -c "pmset -g custom | awk '/AC Power/,0' | grep -Eq '^ *sleep +0'"
     if [[ "${AF_LID_CLOSED:-0}" == 1 ]]; then check "stays awake with lid closed" bash -c "pmset -g | grep -Eq 'SleepDisabled[[:space:]]+1'"; fi
     check "Remote Login on"        bash -c "systemsetup -getremotelogin 2>/dev/null | grep -q On || nc -z localhost 22"
@@ -33,13 +33,13 @@ case "$role" in
     "$AF_ROOT/bin/af" slot status || true
     "$AF_ROOT/bin/af" health || true
     ;;
-  cockpit)
-    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/cockpit/Brewfile"
+  master)
+    check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/master/Brewfile"
     check "ssh include configured"  grep -qs "Include $AF_HOME/ssh_config" "$HOME/.ssh/config"
-    check "host reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
+    check "slave reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
     check "US proxy reachable"      curl -fsS --max-time 10 -x "${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}" https://am.i.mullvad.net/json
     ;;
-  *) warn "Unknown role; run ./bootstrap.sh <host|cockpit> first." ;;
+  *) warn "Unknown role; run ./bootstrap.sh <slave|master> first." ;;
 esac
 
 if (( fails )); then warn "$fails check(s) need attention"; exit 1; fi

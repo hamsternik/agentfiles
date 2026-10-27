@@ -1,6 +1,6 @@
 # Added by `af gateway up` when the host has a Tailscale IP: also publish the
 # proxy on the tailnet address only (never 0.0.0.0, never the LAN), so the
-# cockpit's "us" Chrome profile can use it. Restrict who may reach port 8888
+# master's "us" Chrome profile can use it. Restrict who may reach port 8888
 # with Tailscale ACLs.
 services:
   gluetun:

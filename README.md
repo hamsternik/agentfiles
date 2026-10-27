@@ -1,12 +1,12 @@
 # agentfiles
 
 Dotfiles for agent machines. One repo that turns a Mac into an always-on
-**agent host**, or into the **cockpit** you drive it from, and can rebuild
+**agent host**, or into the **master** you drive it from, and can rebuild
 either on a new machine.
 
 ```
-./bootstrap.sh host      # the always-on machine agents run on
-./bootstrap.sh cockpit   # the laptop you work from
+./bootstrap.sh slave     # the always-on machine agents run on
+./bootstrap.sh master    # the laptop you work from
 ```
 
 It is project-agnostic: it provides capabilities (US egress gateway, resource
@@ -22,9 +22,9 @@ On a fresh Mac:
 ```bash
 xcode-select --install
 git clone https://github.com/<you>/agentfiles.git ~/agentfiles && cd ~/agentfiles
-./bootstrap.sh host        # first run creates local/ from local.example/ and stops
+./bootstrap.sh slave       # first run creates local/ from local.example/ and stops
 $EDITOR local/machine.env  # fill it in
-make host                  # installs hooks, runs every step; safe to re-run
+make slave                 # installs hooks, runs every step; safe to re-run
 af doctor                  # add bin/ to PATH first: `make path`
 ```
 
@@ -36,8 +36,8 @@ Steps that need a human (Apple ID, logins, System Settings toggles) are printed 
 ```
 Brewfile                repo dependencies (make deps)
 bootstrap.sh            entry point: ./bootstrap.sh <role> [--only NN] [--dry-run]
-roles/host/             Brewfile + numbered idempotent steps for the agent host
-roles/cockpit/          Brewfile + steps for the driving laptop
+roles/slave/            Brewfile + numbered idempotent steps for the agent host
+roles/master/           Brewfile + steps for the driving laptop
 bin/af                  the `af` CLI (af help)
 config/limits.env       default limits for a 16 GB / 512 GB machine
 apple/                  pinned Xcode version, simulator runtimes
@@ -65,7 +65,7 @@ docs/                   PLAN, runbook, security
 | `af projects list\|sync\|install-jobs` | projects from `local/projects.yaml`, schedules from their manifests |
 | `af job <project> <job>` | run one manifest job with its needs applied |
 | `af health` / `af cleanup` | disk, memory, swap, gateway checks / reclaim disk |
-| `af attach [--screen]` | from the cockpit: tmux on the host, or Screen Sharing |
+| `af attach [--screen]` | from the master: tmux on the host, or Screen Sharing |
 | `af doctor` | check this machine against its role |
 
 ## Relationship to dotfiles

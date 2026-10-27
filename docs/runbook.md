@@ -3,20 +3,20 @@
 ## Rebuild a host from scratch
 1. Fresh macOS, admin user, `xcode-select --install`.
 2. `git clone https://github.com/<you>/agentfiles.git ~/agentfiles && cd ~/agentfiles`
-3. `./bootstrap.sh host` → creates `local/`. Restore or fill `local/machine.env`,
+3. `./bootstrap.sh slave` → creates `local/`. Restore or fill `local/machine.env`,
    `local/projects.yaml`, `local/limits.env` (keep a copy of `local/` in your password manager
    or another private place; it is not in git).
-4. `make host`, then do the printed manual steps. Re-run `make host` until it is clean.
+4. `make slave`, then do the printed manual steps. Re-run `make slave` until it is clean.
 5. Secrets: `af secret set us-gateway/wireguard-private-key` and `.../wireguard-addresses`.
 6. `af doctor`.
 
-Re-running `make host` at any time applies changes from the repo.
+Re-running `make slave` at any time applies changes from the repo.
 
 ## Daily operations
 | Task | Command |
 |---|---|
-| Open a shell on the host | `af attach` (cockpit) |
-| See the host's screen | `af attach --screen` (cockpit) |
+| Open a shell on the host | `af attach` (master) |
+| See the host's screen | `af attach --screen` (master) |
 | Machine status | `af doctor`, `af health`, `af slot status` |
 | Gateway | `af gateway status` / `test` / `logs` / `up` / `down` |
 | Projects | `af projects list` / `sync` / `install-jobs` |
@@ -35,7 +35,7 @@ Re-running `make host` at any time applies changes from the repo.
   `softwareupdate -ia --restart` while you are watching.
 
 ## After a reboot
-1. Tailscale (system daemon) comes up first. Check from the cockpit: `ssh agent true`.
+1. Tailscale (system daemon) comes up first. Check from the master: `ssh agent true`.
 2. Log in to the GUI session if automatic login is off.
 3. OrbStack starts at login; the gateway restarts itself (`restart: unless-stopped`).
    If it started before Tailscale had an IP, the health check re-runs `af gateway up`.
@@ -48,4 +48,4 @@ Re-running `make host` at any time applies changes from the repo.
   reclaimed automatically; a live one is genuinely busy.
 - **Disk blocked:** `af cleanup --apply`, then `af worktree list` and remove finished ones.
 - **`codesign` fails over SSH:** the login keychain is locked in SSH sessions. Simulator builds
-  don't need signing; device builds stay on the cockpit for now.
+  don't need signing; device builds stay on the master for now.

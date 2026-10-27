@@ -12,5 +12,5 @@ if ! have brew; then
 fi
 run brew update
 run brew bundle --file "$AF_ROOT/Brewfile"
-run brew bundle --file "$AF_ROOT/roles/host/Brewfile"
+run brew bundle --file "$AF_ROOT/roles/slave/Brewfile"
 ok "Brewfile applied"

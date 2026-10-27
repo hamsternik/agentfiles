@@ -8,4 +8,4 @@ require_macos
 [[ -n "${AF_HOST_TAILNET:-}" ]] || die "Set AF_HOST_TAILNET in local/machine.env"
 have brew || die "Install Homebrew first (your dotfiles README covers it)"
 run brew bundle --file "$AF_ROOT/Brewfile"
-run brew bundle --file "$AF_ROOT/roles/cockpit/Brewfile"
+run brew bundle --file "$AF_ROOT/roles/master/Brewfile"

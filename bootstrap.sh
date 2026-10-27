@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# agentfiles bootstrap: fresh macOS -> working agent host or cockpit.
+# agentfiles bootstrap: fresh macOS -> working agent host or master.
 #
-#   ./bootstrap.sh host            # always-on agent machine
-#   ./bootstrap.sh cockpit         # the laptop you drive it from
-#   ./bootstrap.sh host --only 30  # run steps whose name starts with 30
-#   ./bootstrap.sh host --dry-run  # print what would happen
+#   ./bootstrap.sh slave           # always-on agent machine
+#   ./bootstrap.sh master          # the laptop you drive it from
+#   ./bootstrap.sh slave --only 30 # run steps whose name starts with 30
+#   ./bootstrap.sh slave --dry-run # print what would happen
 #
 # Every step is idempotent: re-running is safe and is how you apply changes.
 set -euo pipefail

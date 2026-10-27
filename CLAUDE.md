@@ -4,7 +4,7 @@ Context for an agent editing *this* repo (rules for agents running *on* a host
 are in `claude/CLAUDE.host.md`).
 
 ## What this is
-Bash-based provisioning for macOS agent machines, in two roles (`host`, `cockpit`),
+Bash-based provisioning for macOS agent machines, in two roles (`slave`, `master`),
 plus the `af` CLI. See `docs/PLAN.md`.
 
 ## Hard rules

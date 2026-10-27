@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help deps host cockpit dry-run-host dry-run-cockpit doctor hooks lint test secrets-scan path
+.PHONY: help deps slave master dry-run-slave dry-run-master doctor hooks lint test secrets-scan path
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -10,17 +10,17 @@ help: ## Show targets
 deps: ## Install repo dependencies (gitleaks, shellcheck, yq, jq) from ./Brewfile
 	brew bundle --file Brewfile
 
-host: hooks ## Bootstrap this Mac as the always-on agent host
-	./bootstrap.sh host
+slave: hooks ## Bootstrap this Mac as the slave (always-on agent host)
+	./bootstrap.sh slave
 
-cockpit: hooks ## Bootstrap this Mac as the cockpit (client side)
-	./bootstrap.sh cockpit
+master: hooks ## Bootstrap this Mac as the master (client side)
+	./bootstrap.sh master
 
-dry-run-host: ## Print what host bootstrap would do
-	./bootstrap.sh host --dry-run
+dry-run-slave: ## Print what slave bootstrap would do
+	./bootstrap.sh slave --dry-run
 
-dry-run-cockpit: ## Print what cockpit bootstrap would do
-	./bootstrap.sh cockpit --dry-run
+dry-run-master: ## Print what master bootstrap would do
+	./bootstrap.sh master --dry-run
 
 doctor: ## Check this machine against its role
 	bin/af doctor

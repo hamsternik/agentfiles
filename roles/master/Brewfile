@@ -1,4 +1,4 @@
-# Cockpit (the laptop you drive the host from). Only what reaching the host needs;
+# Master (the laptop you drive the host from). Only what reaching the host needs;
 # everything else belongs to your personal dotfiles.
 brew "mosh"
 cask "tailscale-app"   # menu bar app; fine on a machine you are logged into

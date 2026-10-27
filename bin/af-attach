@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Attach to the host from the cockpit: af attach [tmux-session] | af attach --screen
+# Attach to the host from the master: af attach [tmux-session] | af attach --screen
 set -euo pipefail
 AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export AF_ROOT

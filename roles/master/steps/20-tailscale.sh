@@ -4,7 +4,7 @@ set -euo pipefail
 . "$AF_ROOT/lib/common.sh"
 af_load_config
 
-# Tailscale app on the cockpit. A system-wide VPN (e.g. the Mullvad app) can
+# Tailscale app on the master. A system-wide VPN (e.g. the Mullvad app) can
 # conflict with it; see docs/PLAN.md "US traffic" for the gateway alternative.
 if tailscale status >/dev/null 2>&1 || /Applications/Tailscale.app/Contents/MacOS/Tailscale status >/dev/null 2>&1; then
   ok "Tailscale running"
