@@ -12,8 +12,11 @@ if [[ "${1:-}" == --screen ]]; then
   exec open "vnc://$host"
 fi
 session="${1:-main}"
+# `ssh host cmd` runs a non-login, non-interactive shell on the slave: no
+# Homebrew on PATH. So call tmux and mosh-server by absolute path.
+bin="${AF_HOST_BREW_PREFIX:-/opt/homebrew}/bin"
 if have mosh; then
-  exec mosh agent -- tmux new -A -s "$session"
+  exec mosh --server="$bin/mosh-server" agent -- "$bin/tmux" new -A -s "$session"
 else
-  exec ssh -t agent tmux new -A -s "$session"
+  exec ssh -t agent "$bin/tmux" new -A -s "$session"
 fi
