@@ -35,10 +35,17 @@ case "${1:-status}" in
   status) compose ps ;;
   logs)   compose logs --tail 100 -f ;;
   test)
-    # Expect a US exit through the VPN provider.
-    out="$(curl -fsS --max-time 15 -x "http://127.0.0.1:$AF_US_PROXY_PORT" https://am.i.mullvad.net/json)"
-    echo "$out" | jq -c '{ip, country, city, mullvad_exit_ip}'
-    echo "$out" | jq -e '.mullvad_exit_ip == true and (.country | test("United States|USA"))' >/dev/null
+    # Expect a US exit through the proxy, for any provider (Cloudflare's trace
+    # reports the country it sees). With Mullvad, also expect a Mullvad exit.
+    proxy="http://127.0.0.1:$AF_US_PROXY_PORT"
+    trace="$(curl -fsS --max-time 15 -x "$proxy" https://www.cloudflare.com/cdn-cgi/trace)"
+    loc="$(sed -n 's/^loc=//p' <<<"$trace")"
+    echo "exit ip=$(sed -n 's/^ip=//p' <<<"$trace") loc=$loc provider=$AF_US_GATEWAY_PROVIDER"
+    [[ "$loc" == US ]] || die "exit is not in the US (loc=${loc:-unknown})"
+    if [[ "$AF_US_GATEWAY_PROVIDER" == mullvad ]]; then
+      out="$(curl -fsS --max-time 15 -x "$proxy" https://am.i.mullvad.net/json)"
+      jq -e '.mullvad_exit_ip == true' >/dev/null <<<"$out" || die "exit is not a Mullvad server"
+    fi
     ;;
   *) die "usage: af gateway up|down|status|logs|test" ;;
 esac

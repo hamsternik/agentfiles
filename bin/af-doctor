@@ -38,7 +38,7 @@ case "$role" in
     check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/master/Brewfile"
     check "ssh include configured"  grep -qs "Include $AF_HOME/ssh_config" "$HOME/.ssh/config"
     check "slave reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
-    check "US proxy reachable"      curl -fsS --max-time 10 -x "${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}" https://am.i.mullvad.net/json
+    check "US proxy exits in US"    bash -c "curl -fsS --max-time 10 -x '${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}' https://www.cloudflare.com/cdn-cgi/trace | grep -qx loc=US"
     ;;
   *) warn "Unknown role; run ./bootstrap.sh <slave|master> first." ;;
 esac
