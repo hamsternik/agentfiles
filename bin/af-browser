@@ -17,7 +17,10 @@ mkdir -p "$dir"
 args=(--user-data-dir="$dir" --no-first-run)
 if [[ "$profile" == us ]]; then
   proxy="${AF_US_PROXY_URL:-http://127.0.0.1:$AF_US_PROXY_PORT}"
-  args+=(--proxy-server="$proxy")
+  # The proxy resolves page hosts, but Chrome's DNS prefetch can still ask the
+  # local resolver: block that, except for the proxy host itself.
+  proxy_host="${proxy#*://}"; proxy_host="${proxy_host%%[:/]*}"
+  args+=(--proxy-server="$proxy" --host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE $proxy_host")
   log "Chrome profile 'us' via $proxy"
 fi
 [[ -n "$url" ]] && args+=("$url")
