@@ -10,9 +10,10 @@ require_macos
 
 if ! xcode-select -p >/dev/null 2>&1; then
   run xcode-select --install || true
-  die "Install the Xcode Command Line Tools (dialog opened), then re-run."
+  die_or_warn "Install the Xcode Command Line Tools (dialog opened), then re-run."
+else
+  ok "Command Line Tools present"
 fi
-ok "Command Line Tools present"
 
 log "Asking for sudo once (power, sharing and service settings need it)"
 run sudo -v

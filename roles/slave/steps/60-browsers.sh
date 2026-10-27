@@ -5,7 +5,7 @@ set -euo pipefail
 af_load_config
 
 # Browsers: Playwright's Chromium, pinned Chrome for Testing, Chrome profiles.
-have npx || die "node missing; run step 20 first"
+have npx || die_or_warn "node missing; run step 20 first"
 
 log "Playwright Chromium (shared cache)"
 run npx -y playwright@latest install chromium

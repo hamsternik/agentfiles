@@ -5,7 +5,8 @@ set -euo pipefail
 af_load_config
 
 # Tailscale as a system daemon (formula), so it is up before anyone logs in.
-if ! sudo brew services list 2>/dev/null | grep -Eq '^tailscale[[:space:]]+started'; then
+# Checked without sudo: the daemon runs as root, so look for the process.
+if ! pgrep -qx tailscaled; then
   run sudo brew services start tailscale
 fi
 

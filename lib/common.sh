@@ -22,10 +22,19 @@ die()  { printf '%s xx%s %s\n'  "$_c_err"  "$_c_off" "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # Manual steps are collected and printed at the end of bootstrap.
+# A dry-run only prints them.
 manual() {
-  mkdir -p "$AF_STATE"
-  printf -- '- %s\n' "$*" >> "$AF_STATE/manual-steps.md"
+  if [[ "$AF_DRY_RUN" != 1 ]]; then
+    mkdir -p "$AF_STATE"
+    printf -- '- %s\n' "$*" >> "$AF_STATE/manual-steps.md"
+  fi
   warn "MANUAL: $*"
+}
+
+# A precondition that stops a real run. A dry-run warns and goes on, so it
+# shows everything that would happen (and every missing precondition).
+die_or_warn() {
+  if [[ "$AF_DRY_RUN" == 1 ]]; then warn "[dry-run] would stop here: $*"; else die "$*"; fi
 }
 
 # Run a command, or just print it in dry-run mode.
@@ -48,7 +57,7 @@ af_load_config() {
   [[ -f "$AF_LOCAL/machine.env" ]] && . "$AF_LOCAL/machine.env"
   # shellcheck source=/dev/null
   [[ -f "$AF_LOCAL/limits.env" ]] && . "$AF_LOCAL/limits.env"
-  mkdir -p "$AF_STATE" "$AF_LOGS"
+  [[ "$AF_DRY_RUN" == 1 ]] || mkdir -p "$AF_STATE" "$AF_LOGS"
 }
 
 # Render a template by replacing {{VAR}} with the value of $VAR.

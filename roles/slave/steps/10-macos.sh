@@ -20,7 +20,8 @@ run sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate Automatica
 run sudo defaults write /Library/Preferences/com.apple.commerce AutoUpdate -bool false
 
 log "Remote Login (sshd)"
-if sudo systemsetup -getremotelogin 2>/dev/null | grep -q 'On'; then
+# Checked without sudo: something answers on port 22.
+if nc -z -G 2 localhost 22 2>/dev/null; then
   ok "Remote Login already on"
 else
   run sudo systemsetup -setremotelogin on \
