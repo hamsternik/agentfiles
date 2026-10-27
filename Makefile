@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help deps slave master dry-run-slave dry-run-master doctor hooks lint test secrets-scan path
+.PHONY: help deps slave master dry-run-slave dry-run-master doctor hooks lint test e2e-power secrets-scan path
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -29,10 +29,13 @@ hooks: ## Install git hooks (gitleaks + denylist) for this repo
 	git config core.hooksPath hooks
 
 lint: ## shellcheck every script
-	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/* tests/*.sh
+	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/* tests/*.sh tests/e2e/*.sh
 
 test: ## Run tests under macOS /bin/bash 3.2
 	@for t in tests/*.test.sh; do echo "== $$t"; /bin/bash "$$t" || exit 1; done
+
+e2e-power: ## Check the power step on a real host: make e2e-power TARGET=user@host
+	@tests/e2e/power.e2e.sh "$(TARGET)"
 
 secrets-scan: ## Scan full git history for secrets
 	gitleaks git --redact --config .gitleaks.toml .
