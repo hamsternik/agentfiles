@@ -7,7 +7,7 @@ export AF_ROOT
 . "$AF_ROOT/lib/common.sh"
 af_load_config
 
-#   af sim run [--device "iPhone 16"] -- <cmd>   boot a slot-owned simulator, export SIM_UDID, run, shut down
+#   af sim run [--device "iPhone 17"] -- <cmd>   boot a slot-owned simulator, export SIM_UDID, run, shut down
 #   af sim shot <file.png> [udid]
 #   af sim record <file.mp4> [udid]               (Ctrl-C to stop)
 # Each slot index gets its own device (af-sim-0, af-sim-1, ...) so parallel
@@ -19,8 +19,13 @@ device_for_slot() {
   name="af-sim-$idx"
   udid="$(xcrun simctl list devices -j | jq -r --arg n "$name" '[.devices[][] | select(.name == $n and .isAvailable)] | first | .udid // empty')"
   if [[ -z "$udid" ]]; then
-    runtime="$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier // empty')"
-    [[ -n "$runtime" ]] || die "No iOS simulator runtime installed (see apple/runtimes.txt)"
+    # Newest available iOS runtime that supports this device type. simctl does
+    # not promise an order, and versions sort as numbers (26.10 > 26.4).
+    runtime="$(xcrun simctl list runtimes -j | jq -r --arg d "$devtype" '
+      [.runtimes[] | select(.platform == "iOS" and .isAvailable
+        and any(.supportedDeviceTypes[]?; .name == $d or .identifier == $d))]
+      | sort_by(.version | split(".") | map(tonumber)) | last | .identifier // empty')"
+    [[ -n "$runtime" ]] || die "No available iOS runtime supports '$devtype' (see apple/runtimes.txt, xcrun simctl list devicetypes)"
     udid="$(xcrun simctl create "$name" "$devtype" "$runtime")"
   fi
   echo "$udid"
@@ -29,7 +34,7 @@ device_for_slot() {
 case "${1:-}" in
   run)
     shift
-    devtype="${AF_SIM_DEVICE_TYPE:-iPhone 16}"
+    devtype="${AF_SIM_DEVICE_TYPE:-iPhone 17}"
     if [[ "${1:-}" == --device ]]; then devtype="$2"; shift 2; fi
     [[ "${1:-}" == -- ]] && shift
     [[ $# -gt 0 ]] || die "usage: af sim run [--device NAME] -- <cmd>"

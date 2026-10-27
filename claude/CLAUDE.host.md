@@ -7,7 +7,7 @@ CLAUDE.md and `.agent/project.yaml` add project-specific detail.
 
 ## Use the host's tools for heavy work
 - Xcode builds and tests: `af build <xcodebuild args>` — never call `xcodebuild` directly.
-- Simulators: `af sim run [--device "iPhone 16"] -- <command>`; inside it, `$SIM_UDID` is yours.
+- Simulators: `af sim run [--device "iPhone 17"] -- <command>`; inside it, `$SIM_UDID` is yours.
   Screenshots: `af sim shot out.png`. Video: `af sim record out.mp4`.
 - Browsers (Playwright, Chrome): wrap the run in `af slot browser -- <command>`.
 - These commands wait for a free slot. Waiting is normal; do not work around it.
