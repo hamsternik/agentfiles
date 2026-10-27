@@ -47,6 +47,13 @@ run() {
 }
 
 is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
+
+# A Sharing service is on: its launchd override is "enabled", or its port answers.
+# No sudo needed (systemsetup needs Full Disk Access and exits 0 when it refuses).
+service_on() {  # service_on <launchd label> <port>
+  launchctl print-disabled system 2>/dev/null | grep -q "\"$1\" => enabled" \
+    || nc -z -G 2 127.0.0.1 "$2" 2>/dev/null
+}
 require_macos() { is_macos || die "This step only runs on macOS."; }
 
 # Load config: repo defaults first, then machine-local overrides.
