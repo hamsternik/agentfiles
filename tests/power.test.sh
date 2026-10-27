@@ -18,7 +18,11 @@ STUB
   cat > "$tmp/bin/pmset" <<STUB
 #!/bin/bash
 echo "pmset \$*" >> "$tmp/calls"
-if [[ "\$1" == -g ]]; then
+if [[ "\$*" == "-g cap" ]]; then
+  printf 'Capabilities for AC Power:\n displaysleep\n sleep\n womp\n'
+  [[ -f "$tmp/cap_autorestart" ]] && printf ' autorestart\n'
+  true
+elif [[ "\$1" == -g ]]; then
   printf 'System-wide power settings:\n SleepDisabled\t\t%s\nCurrently in use:\n sleep                0\n' "\$(cat "$tmp/sleepdisabled")"
 elif [[ "\$*" == *disablesleep* ]]; then
   echo "\${@: -1}" > "$tmp/sleepdisabled"
@@ -47,12 +51,18 @@ check() {  # check <description> <command...>
   if "$@"; then echo "ok   $what"; else echo "FAIL $what"; sed 's/^/     /' "$tmp/calls" "$tmp/out"; fails=$((fails + 1)); fi
 }
 called()     { grep -qF -- "$1" "$tmp/calls"; }
-not_called() { ! grep -qF -- "$1" "$tmp/calls"; }
+not_called() { [[ -f "$tmp/calls" ]] && ! grep -qF -- "$1" "$tmp/calls"; }
 
 setup 0; run_step 1
 check "lid closed: disables sleep"            called "sudo pmset -a disablesleep 1"
 check "lid closed: never sleeps on AC"        called "sudo pmset -c sleep 0"
 check "lid closed: state is applied"          grep -qx 1 "$tmp/sleepdisabled"
+check "laptop: no autorestart (not supported)" not_called "pmset -a autorestart"
+check "no systemsetup (restartfreeze is a no-op)" not_called "systemsetup"
+rm -rf "$tmp"
+
+setup 0; touch "$tmp/cap_autorestart"; run_step 1
+check "desktop: autorestart when supported"   called "sudo pmset -a autorestart 1"
 rm -rf "$tmp"
 
 setup 1; run_step 1

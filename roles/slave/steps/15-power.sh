@@ -9,12 +9,17 @@ af_load_config
 # Run on its own with: ./bootstrap.sh slave --only 15
 require_macos
 
-log "Power: never sleep on AC, wake for network, restart after freeze"
+log "Power: never sleep on AC, wake for network"
 # -c = on charger only, so a pulled cable still lets the battery protect itself.
 run sudo pmset -c sleep 0 disksleep 0 displaysleep 10 powernap 0 womp 1 tcpkeepalive 1
-run sudo pmset -a autorestart 1
-run sudo systemsetup -setrestartfreeze on >/dev/null \
-  || warn "systemsetup -setrestartfreeze failed; autorestart still covers power loss."
+# autorestart exists on desktops only. Apple silicon laptops power on by
+# themselves when AC returns. (systemsetup -setrestartfreeze is a no-op on
+# Apple silicon and exits 0 even on error, so it is not used.)
+if pmset -g cap | grep -qw autorestart; then
+  run sudo pmset -a autorestart 1
+else
+  ok "autorestart not supported on this model; it powers on when AC is connected"
+fi
 
 # A closed MacBook sleeps unless something keeps it awake. disablesleep is not
 # in `man pmset` but works on Apple silicon. It applies on battery too.
