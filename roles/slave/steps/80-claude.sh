@@ -20,4 +20,4 @@ fi
 have claude || warn "claude CLI not on PATH yet (open a new shell after step 20)"
 manual "Sign in: run 'claude' once and log in; open the Claude desktop app and sign in."
 manual "Set up remote access to Claude sessions on this host (check the current options in Claude Code / desktop docs)."
-manual "GitHub: 'gh auth login' with an identity whose access is limited to the repos agents may touch."
+manual "GitHub: 'gh auth login' for each account agents use (personal and work; see docs/security.md, Identities)."
