@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 # Tests for roles/slave/steps/50-apple.sh with stubbed xcodebuild, xcrun,
-# xcodes, DevToolsSecurity, sudo and uname. stdin is not a terminal, so a
-# missing Xcode becomes a manual step.
+# xcodes, DevToolsSecurity, sudo and uname. Pins come from config/versions.env.
+# stdin is not a terminal, so a missing Xcode becomes a manual step.
 # Run: make test   (uses /bin/bash, like a fresh Mac)
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 step="$repo/roles/slave/steps/50-apple.sh"
 fails=0
+pin() { sed -n "s/^$1=//p" "$repo/config/versions.env" 2>/dev/null | head -1 || true; }
+want="$(pin AF_XCODE_VERSION)"; build="$(pin AF_XCODE_BUILD)"; min="$(pin AF_XCODES_MIN_VERSION)"
 
-setup() {  # setup <xcode version or ""> <sdk> <runtime versions> <devtools enabled|disabled>
+# setup <selected "version build" or ""> <xcodes installed lines> <sdk> <runtime versions> <devtools> [xcodes version]
+setup() {
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/bin" "$tmp/local" "$tmp/home"
-  : > "$tmp/calls"
-  : > "$tmp/local/machine.env"
+  : > "$tmp/calls"; : > "$tmp/local/machine.env"
+  echo "$1" > "$tmp/selected"
+  printf '%s' "$2" > "$tmp/installed"
   local rts="" v
-  for v in $3; do
+  for v in $4; do
     rts="$rts${rts:+,}{\"platform\":\"iOS\",\"version\":\"$v\",\"isAvailable\":true,\"identifier\":\"com.apple.CoreSimulator.SimRuntime.iOS-${v//./-}\",\"name\":\"iOS $v\"}"
   done
   echo "{\"runtimes\":[$rts]}" > "$tmp/runtimes.json"
@@ -26,26 +30,35 @@ EOF
 #!/bin/bash
 echo "xcodebuild \$*" >> "$tmp/calls"
 if [[ "\$1" == -version ]]; then
-  [[ -n "$1" ]] || { echo "xcode-select: error: tool 'xcodebuild' requires Xcode" >&2; exit 1; }
-  printf 'Xcode %s\nBuild version 27A000\n' "$1"
+  read -r v b < "$tmp/selected"
+  [[ -n "\$v" ]] || { echo "xcode-select: error: tool 'xcodebuild' requires Xcode" >&2; exit 1; }
+  printf 'Xcode %s\nBuild version %s\n' "\$v" "\$b"
 fi
+EOF
+  # xcodes select <version>: selects the installed line for that version.
+  cat > "$tmp/bin/xcodes" <<EOF
+#!/bin/bash
+echo "xcodes \$*" >> "$tmp/calls"
+case "\$1" in
+  version) echo "${6:-2.1.0}" ;;
+  installed) cat "$tmp/installed" ;;
+  select) grep "^\$2 (" "$tmp/installed" | sed -E 's/^([^ ]+) \\(([^)]+)\\).*/\\1 \\2/' > "$tmp/selected" ;;
+esac
 EOF
   cat > "$tmp/bin/xcrun" <<EOF
 #!/bin/bash
 echo "xcrun \$*" >> "$tmp/calls"
-[[ -n "$1" ]] || exit 1
 case "\$*" in
-  "--sdk iphonesimulator --show-sdk-version") echo "$2" ;;
+  "--sdk iphonesimulator --show-sdk-version") [[ -n "$3" ]] && echo "$3" || exit 1 ;;
   "simctl list runtimes -j") cat "$tmp/runtimes.json" ;;
 esac
 EOF
   cat > "$tmp/bin/DevToolsSecurity" <<EOF
 #!/bin/bash
 echo "DevToolsSecurity \$*" >> "$tmp/calls"
-[[ "\$1" == -status ]] && echo "Developer mode is currently $4."
+[[ "\$1" == -status ]] && echo "Developer mode is currently $5."
 true
 EOF
-  printf '#!/bin/bash\necho "xcodes $*" >> "%s/calls"\n' "$tmp" > "$tmp/bin/xcodes"
   cat > "$tmp/bin/uname" <<'EOF'
 #!/bin/bash
 if [[ "$1" == -m ]]; then echo arm64; else echo Darwin; fi
@@ -62,32 +75,50 @@ run_step() {
 check() {  # check <description> <command...>
   local what="$1"; shift
   if "$@"; then echo "ok   $what"
-  else echo "FAIL $what"; sed 's/^/     /' "$tmp/out"; echo "     -- calls:"; sed 's/^/     /' "$tmp/calls"; fails=$((fails + 1)); fi
+  else echo "FAIL $what"; sed 's/^/     /' "${tmp:-/nonexistent}/out" "${tmp:-/nonexistent}/calls" 2>/dev/null || true; fails=$((fails + 1)); fi
 }
 called()     { grep -qF -- "$1" "$tmp/calls"; }
 not_called() { [[ -f "$tmp/calls" ]] && ! grep -qF -- "$1" "$tmp/calls"; }
 manual_has() { grep -qF -- "$1" "$tmp/home/.agentfiles/state/manual-steps.md" 2>/dev/null; }
 finished()   { ! grep -q 'step exited' "$tmp/out"; }
 
-setup "" "" "" enabled; run_step
-check "no Xcode: finishes"                      finished
-check "no Xcode: not reported as present"       bash -c "! grep -q 'Xcode present' '$tmp/out'"
-check "no Xcode: manual install step"           manual_has "xcodes install"
-check "no Xcode: manual uses fast unxip"        manual_has "--experimental-unxip"
-check "no Xcode: nothing else attempted"        not_called "xcodebuild -license"
+check "versions.env pins the Xcode version"         [ -n "$want" ]
+check "versions.env pins the Xcode build"           [ -n "$build" ]
+check "versions.env has an xcodes minimum"          [ -n "$min" ]
+check "apple/xcode-version is gone"                 [ ! -e "$repo/apple/xcode-version" ]
+
+setup "" "" "" "" enabled; run_step
+check "no Xcode: finishes"                          finished
+check "no Xcode: manual install of the pin"         manual_has "xcodes install $want --select --experimental-unxip"
+check "no Xcode: nothing else attempted"            not_called "xcodebuild -license"
 rm -rf "$tmp"
 
-setup "27.0" "27.0" "27.0" enabled; run_step
-check "ready: finishes"                         finished
-check "ready: Xcode reported"                   grep -q 'Xcode present: Xcode 27.0' "$tmp/out"
-check "ready: runtime matches SDK, no download" not_called "-downloadPlatform"
-check "ready: developer mode left alone"        not_called "DevToolsSecurity -enable"
-check "ready: license accepted"                 called "sudo xcodebuild -license accept"
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "$want" "$want" enabled; run_step
+check "pinned build selected: finishes"             finished
+check "pinned build selected: reported"             grep -q "Xcode $want ($build)" "$tmp/out"
+check "pinned build selected: no select/install"    not_called "xcodes select"
+check "pinned build selected: license accepted"     called "sudo xcodebuild -license accept"
+check "matching runtime: no download"               not_called "-downloadPlatform"
+check "developer mode on: left alone"               not_called "DevToolsSecurity -enable"
 rm -rf "$tmp"
 
-setup "27.1" "27.1" "27.0" disabled; run_step
-check "old runtime only: downloads arm64 iOS"   called "xcodebuild -downloadPlatform iOS -architectureVariant arm64"
-check "dev mode off: enabled"                   called "sudo DevToolsSecurity -enable"
+setup "27.0 27A266a" "$(printf '27.0 (27A266a) (Selected)  /Applications/Xcode-27.0.0.app\n%s (%s)  /Applications/Xcode-%s.0.app\n' "$want" "$build" "$want")" "$want" "$want" disabled; run_step
+check "pin installed, not selected: xcodes select"  called "xcodes select $want"
+check "pin installed, not selected: finishes"       finished
+check "dev mode off: enabled"                       called "sudo DevToolsSecurity -enable"
+rm -rf "$tmp"
+
+setup "27.0 27A266a" "27.0 (27A266a) (Selected)  /Applications/Xcode-27.0.0.app" "27.0" "27.0" enabled; run_step
+check "other Xcode only: manual install of the pin" manual_has "xcodes install $want"
+rm -rf "$tmp"
+
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "$want" "$want" enabled 1.6.0; run_step
+check "old xcodes: manual upgrade step"             manual_has "xcodes"
+check "old xcodes: names the minimum"               manual_has "$min"
+rm -rf "$tmp"
+
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "$want" "27.0" enabled; run_step
+check "old runtime only: downloads arm64 iOS"       called "xcodebuild -downloadPlatform iOS -architectureVariant arm64"
 rm -rf "$tmp"
 
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }

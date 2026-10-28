@@ -4,23 +4,31 @@ set -euo pipefail
 . "$AF_ROOT/lib/common.sh"
 af_load_config
 
-# Xcode (pinned), license, first launch, simulator runtimes.
+# Xcode (pinned in config/versions.env), license, first launch, simulator runtimes.
 require_macos
-ver="$(grep -v '^[[:space:]]*#' "$AF_ROOT/apple/xcode-version" | head -1 | tr -d '[:space:]')"
+want="$AF_XCODE_VERSION"; build="$AF_XCODE_BUILD"
 
-# A full Xcode is selected (xcodebuild fails with only the Command Line Tools)
-# and matches the pin. Not a glob on /Applications: Xcode*.app also matches Xcodes.app.
-xcode_version() { xcodebuild -version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
-have_xcode="$(xcode_version)"
-if [[ -n "$have_xcode" && ( "$ver" == latest || "$have_xcode" == "$ver" ) ]]; then
-  ok "Xcode present: Xcode $have_xcode"
+xcodes_ver="$(xcodes version 2>/dev/null | head -1 || true)"
+if [[ -n "$xcodes_ver" ]] && ! version_ge "$xcodes_ver" "$AF_XCODES_MIN_VERSION"; then
+  manual "xcodes $xcodes_ver is older than $AF_XCODES_MIN_VERSION and cannot sign in to Apple: brew upgrade xcodes, then af versions --record."
+fi
+
+# The selected Xcode's build (xcodebuild fails with only the Command Line Tools).
+# Not a glob on /Applications: Xcode*.app also matches Xcodes.app.
+selected_build() { xcodebuild -version 2>/dev/null | awk '/^Build version/ {print $3}' || true; }
+if [[ "$(selected_build)" == "$build" ]]; then
+  ok "Xcode $want ($build) selected"
+elif xcodes installed 2>/dev/null | grep -q "^$want ($build)"; then
+  run xcodes select "$want"
 elif [[ -t 0 ]]; then
-  log "Installing Xcode ($ver) with xcodes (asks for an Apple Developer sign-in)"
-  if [[ "$ver" == latest ]]; then run xcodes install --latest --select --experimental-unxip
-  else run xcodes install "$ver" --select --experimental-unxip; fi
+  log "Installing Xcode $want ($build) with xcodes (asks for an Apple Developer sign-in)"
+  run xcodes install "$want" --select --experimental-unxip
 else
-  manual "Install Xcode: xcodes install ${ver/latest/--latest} --select --experimental-unxip  (Apple Developer sign-in + 2FA). Without an Apple ID here: copy the .xip from another Mac and add --path <file.xip> (needs a version, not --latest)."
+  manual "Install Xcode $want ($build): xcodes install $want --select --experimental-unxip  (Apple Developer sign-in + 2FA). Without an Apple ID here: copy the .xip from another Mac and add --path <file.xip>."
   exit 0
+fi
+if [[ "$AF_DRY_RUN" != 1 && "$(selected_build)" != "$build" ]]; then
+  die_or_warn "Selected Xcode build is '$(selected_build)', not $build. Check config/versions.env and 'xcodes installed'."
 fi
 
 run sudo xcodebuild -license accept

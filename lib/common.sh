@@ -48,6 +48,17 @@ run() {
 
 is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
 
+# version_ge 2.10.1 2.9 -> true. Numeric dotted versions; bash 3.2 safe.
+version_ge() {
+  local IFS=. i a b
+  read -r -a a <<<"$1"; read -r -a b <<<"$2"
+  for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+    (( 10#${a[i]:-0} > 10#${b[i]:-0} )) && return 0
+    (( 10#${a[i]:-0} < 10#${b[i]:-0} )) && return 1
+  done
+  return 0
+}
+
 # A Sharing service is on: its launchd override is "enabled", or its port answers.
 # No sudo needed (systemsetup needs Full Disk Access and exits 0 when it refuses).
 service_on() {  # service_on <launchd label> <port>
@@ -60,6 +71,8 @@ require_macos() { is_macos || die "This step only runs on macOS."; }
 af_load_config() {
   # shellcheck source=/dev/null
   [[ -f "$AF_ROOT/config/limits.env" ]] && . "$AF_ROOT/config/limits.env"
+  # shellcheck source=/dev/null
+  [[ -f "$AF_ROOT/config/versions.env" ]] && . "$AF_ROOT/config/versions.env"
   # shellcheck source=/dev/null
   [[ -f "$AF_LOCAL/machine.env" ]] && . "$AF_LOCAL/machine.env"
   # shellcheck source=/dev/null
