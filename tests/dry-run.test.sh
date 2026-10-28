@@ -10,7 +10,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fails=0
 
 # Commands a dry-run may call, and only with these first arguments.
-read_only='^(uname |jq |xcrun --sdk |DevToolsSecurity -status|launchctl print|scutil --get |fdesetup status|xcode-select -p|pmset -g|pmset -g cap|docker info|tailscale status|brew --prefix|xcodebuild -version|xcrun simctl list|security find-generic-password|ioreg )'
+read_only='^(node --version|uname |jq |xcrun --sdk |DevToolsSecurity -status|launchctl print|scutil --get |fdesetup status|xcode-select -p|pmset -g|pmset -g cap|docker info|tailscale status|brew --prefix|xcodebuild -version|xcrun simctl list|security find-generic-password|ioreg )'
 
 stub() {  # stub <name> <exit code> [stdout]
   cat > "$tmp/bin/$1" <<STUB
