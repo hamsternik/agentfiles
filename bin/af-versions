@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Pinned and recorded tool versions vs installed: af versions [--record] [--role R]
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+#   af versions            compare; exit 1 on any drift
+#   af versions --record   rewrite config/brew-versions.<role>.txt from what is installed
+# Pinned (config/versions.env, apple/runtimes.txt, compose.yaml): Xcode build,
+# simulator runtime builds, xcodes minimum, gluetun digest.
+# Recorded (snapshot): every formula and non-auto-updating cask in this role's
+# Brewfiles and the dotfiles' Brewfile.terminal. Upgrade on purpose:
+# brew upgrade <name>, then af versions --record, then commit the diff.
+record=0; role=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --record) record=1; shift ;;
+    --role) role="$2"; shift 2 ;;
+    *) die "usage: af versions [--record] [--role slave|master]" ;;
+  esac
+done
+[[ -n "$role" ]] || role="$(cat "$AF_STATE/role" 2>/dev/null || true)"
+[[ -n "$role" ]] || die "Unknown role: run ./bootstrap.sh <slave|master> first, or pass --role."
+snap="${AF_VERSIONS_DIR:-$AF_ROOT/config}/brew-versions.$role.txt"
+
+brewfiles=("$AF_ROOT/Brewfile" "$AF_ROOT/roles/$role/Brewfile")
+if [[ "$role" == slave && -n "${DOTFILES_REPO:-}" && -f "$DOTFILES_DIR/Brewfile.terminal" ]]; then
+  brewfiles+=("$DOTFILES_DIR/Brewfile.terminal")
+fi
+formulae=(); casks=()
+for f in "${brewfiles[@]}"; do
+  [[ -f "$f" ]] || continue
+  while read -r kind name; do
+    if [[ "$kind" == brew ]]; then formulae+=("$name"); else casks+=("$name"); fi
+  done < <(sed -nE 's/^(brew|cask) "([^"]+)".*/\1 \2/p' "$f")
+done
+
+# "kind name version" lines for what is installed now; auto-updating casks left out.
+installed_lines() {
+  {
+    if (( ${#formulae[@]} )); then
+      brew info --json=v2 --formula "${formulae[@]}" | jq -r '.formulae[]
+        | "formula \(.name) \(if (.installed | length) > 0 then (.installed | map(.version) | join(",")) else "missing" end)"'
+    fi
+    if (( ${#casks[@]} )); then
+      brew info --json=v2 --cask "${casks[@]}" | jq -r '.casks[] | select(.auto_updates != true)
+        | "cask \(.token) \(.installed // "missing")"'
+    fi
+  } | sort -u
+}
+
+if (( record )); then
+  new="$(installed_lines)"
+  old="$(grep -v '^#' "$snap" 2>/dev/null || true)"
+  {
+    echo "# Homebrew versions recorded by 'af versions --record' (role $role). Commit changes on purpose."
+    echo "# Auto-updating casks are not recorded. Format: <formula|cask> <name> <version>"
+    printf '%s\n' "$new"
+  } > "$snap"
+  ok "recorded $(printf '%s\n' "$new" | grep -c .) packages in $snap"
+  diff <(printf '%s\n' "$old") <(printf '%s\n' "$new") | sed -n 's/^[<>] ./  &/p' || true
+  exit 0
+fi
+
+drift=0
+row() { printf '%-6s %-24s %s\n' "$1" "$2" "$3"; [[ "$1" == DRIFT ]] && drift=1; true; }
+
+row info macOS "$(sw_vers -productVersion 2>/dev/null || echo '?')"
+row info "Command Line Tools" "$(pkgutil --pkg-info=com.apple.pkg.CLTools_Executables 2>/dev/null | sed -n 's/^version: //p' || true)"
+
+if [[ "$role" == slave ]]; then
+  sel="$(xcodebuild -version 2>/dev/null | awk '/^Build version/ {print $3}' || true)"
+  if [[ "$sel" == "$AF_XCODE_BUILD" ]]; then row ok Xcode "$AF_XCODE_VERSION ($AF_XCODE_BUILD)"
+  else row DRIFT Xcode "pinned $AF_XCODE_VERSION ($AF_XCODE_BUILD), selected ${sel:-none}"; fi
+
+  xv="$(xcodes version 2>/dev/null | head -1 || true)"
+  if [[ -n "$xv" ]] && version_ge "$xv" "$AF_XCODES_MIN_VERSION"; then row ok xcodes "$xv (>= $AF_XCODES_MIN_VERSION)"
+  else row DRIFT xcodes "${xv:-missing}, needs >= $AF_XCODES_MIN_VERSION"; fi
+
+  runtimes="$(xcrun simctl runtime list -j 2>/dev/null || echo '{}')"
+  while read -r platform rt_build _; do
+    [[ -z "$platform" || "$platform" == \#* ]] && continue
+    if jq -e --arg b "$rt_build" 'to_entries[] | select(.value.build == $b and .value.state == "Ready")' \
+         >/dev/null <<<"$runtimes"; then row ok "$platform runtime" "$rt_build"
+    else row DRIFT "$platform runtime" "pinned build $rt_build not installed"; fi
+  done < "$AF_ROOT/apple/runtimes.txt"
+
+  pinned="$(sed -n 's/^ *image: .*@\(sha256:[0-9a-f]*\).*/\1/p' "$AF_ROOT/services/us-gateway/compose.yaml")"
+  if docker info >/dev/null 2>&1 && img="$(docker inspect --format '{{.Image}}' af-us-gateway 2>/dev/null)"; then
+    running="$(docker image inspect --format '{{join .RepoDigests " "}}' "$img" 2>/dev/null | grep -o 'sha256:[0-9a-f]*' | head -1 || true)"
+    if [[ "$running" == "$pinned" ]]; then row ok gluetun "${pinned:0:19}…"
+    else row DRIFT gluetun "running ${running:-?}, pinned $pinned"; fi
+  else
+    row info gluetun "gateway not running"
+  fi
+fi
+
+if [[ ! -f "$snap" ]]; then
+  row DRIFT Homebrew "no snapshot: run 'af versions --record' and commit $snap"
+else
+  now="$(installed_lines)"
+  total=0; same=0
+  while read -r kind name want got; do
+    total=$((total + 1))
+    if [[ "$want" == "$got" ]]; then same=$((same + 1))
+    else row DRIFT "$name" "$kind: recorded $want, installed $got"; fi
+  done < <(awk 'NR == FNR { if ($0 !~ /^#/ && NF >= 3) s[$1 " " $2] = $3; next }
+                { k = $1 " " $2; seen[k] = 1; print $1, $2, ((k in s) ? s[k] : "unrecorded"), $3 }
+                END { for (k in s) if (!(k in seen)) { split(k, a, " "); print a[1], a[2], s[k], "not-in-Brewfile" } }' \
+                "$snap" <(printf '%s\n' "$now"))
+  row "$( (( same == total )) && echo ok || echo info)" Homebrew "$same of $total packages match $snap"
+fi
+
+if (( drift )); then
+  warn "versions drifted. Fix it, or accept it on purpose: af versions --record, then commit."
+  exit 1
+fi
+ok "all versions match"

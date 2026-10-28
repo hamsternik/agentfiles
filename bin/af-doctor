@@ -31,11 +31,13 @@ case "$role" in
     check "cleanup agent loaded"    launchctl print "gui/$(id -u)/local.agentfiles.cleanup"
     check "claude CLI"              have claude
     check "gh authenticated"        gh auth status
+    check "versions match (af versions)" "$AF_ROOT/bin/af" versions
     "$AF_ROOT/bin/af" slot status || true
     "$AF_ROOT/bin/af" health || true
     ;;
   master)
     check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/master/Brewfile"
+    check "versions match (af versions)" "$AF_ROOT/bin/af" versions
     check "ssh include configured"  grep -qsxF "Include $AF_HOME/ssh_config" "$HOME/.ssh/config" "$HOME/.ssh/config.local"
     check "slave reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
     check "US proxy exits in US"    bash -c "curl -fsS --max-time 10 -x '${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}' https://www.cloudflare.com/cdn-cgi/trace | grep -qx loc=US"
