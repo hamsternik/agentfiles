@@ -23,3 +23,11 @@ plus the `af` CLI. See `docs/PLAN.md`.
   source `lib/common.sh` and call `af_load_config`.
 - Limits are variables in `config/limits.env`, never literals in scripts.
 - Keep `make lint` (shellcheck) clean.
+- `--dry-run` changes nothing: no sudo, no writes outside the repo, no installs, no opened apps.
+  Read-only checks are fine; preconditions use `die_or_warn`. `tests/dry-run.test.sh` enforces it.
+- Every behaviour change gets a stub test in `tests/<name>.test.sh` first (stubs on PATH, temp
+  HOME/AF_HOME/AF_LOCAL, run with `/bin/bash`); `make test` runs them. Real-host checks live in
+  `tests/e2e/`.
+- Prefer tools that ship with macOS (e.g. `/usr/bin/jq`, `/usr/bin/perl`) over Homebrew ones in
+  steps that may run before Homebrew.
+- `systemsetup` exits 0 on failure: never rely on its exit code.

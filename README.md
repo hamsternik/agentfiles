@@ -47,7 +47,8 @@ claude/CLAUDE.host.md   global rules for agents running on the host
 schemas/                example .agent/project.yaml for project repos
 local.example/          templates for local/ (gitignored, machine-specific)
 hooks/pre-commit        blocks local/, secrets, denylisted terms
-docs/                   PLAN, runbook, security
+tests/                  stub tests (make test); tests/e2e/ checks against a real host
+docs/                   PLAN, runbook, security; docs/research/ = dated evidence for decisions
 ```
 
 ## `af` commands
@@ -67,6 +68,15 @@ docs/                   PLAN, runbook, security
 | `af health` / `af cleanup` | disk, memory, swap, gateway checks / reclaim disk |
 | `af attach [--screen]` | from the master: tmux on the host, or Screen Sharing |
 | `af doctor` | check this machine against its role |
+
+## Tests
+
+```
+make lint                                   # shellcheck, no blanket disables
+make test                                   # every tests/*.test.sh under macOS /bin/bash 3.2, stubbed
+make remote-step TARGET=agent@<host> STEP=15 VARS="AF_LID_CLOSED=1"   # one step on the real host
+make e2e-power TARGET=agent@<host>          # lid-closed check on the real host
+```
 
 ## Relationship to dotfiles
 
