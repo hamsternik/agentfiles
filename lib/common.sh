@@ -93,6 +93,25 @@ load_launch_agent() {  # load_launch_agent <label> <plist>
   [[ "$AF_DRY_RUN" == 1 ]] || ok "loaded $label"
 }
 
+# Casks whose app was installed by hand (present in /Applications, unknown to
+# Homebrew) make `brew bundle` stop with "already an App". Adopt them first.
+adopt_casks() {  # adopt_casks <Brewfile...>
+  local apps="${AF_APPLICATIONS_DIR:-/Applications}" f cask app
+  have brew || return 0    # fresh Mac in a dry-run: Homebrew not installed yet
+  for f in "$@"; do
+    # brew gets </dev/null so it cannot eat the list on stdin.
+    while IFS= read -r cask; do
+      brew list --cask "$cask" </dev/null >/dev/null 2>&1 && continue
+      app="$(brew info --cask --json=v2 "$cask" </dev/null 2>/dev/null \
+        | jq -r '[.casks[0].artifacts[]? | .app? // empty | .[0] | strings] | first // empty' || true)"
+      if [[ -n "$app" && -d "$apps/$app" ]]; then
+        log "adopting hand-installed $app into Homebrew (cask $cask)"
+        run brew install --cask --adopt "$cask" </dev/null
+      fi
+    done < <(grep -oE '^cask "[^"]+"' "$f" | cut -d'"' -f2)
+  done
+}
+
 # Render a template by replacing {{VAR}} with the value of $VAR.
 render_template() {
   local src="$1" dst="$2" content var

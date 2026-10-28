@@ -7,5 +7,6 @@ af_load_config
 require_macos
 [[ -n "${AF_HOST_TAILNET:-}" ]] || die_or_warn "Set AF_HOST_TAILNET in local/machine.env"
 have brew || die_or_warn "Install Homebrew first (your dotfiles README covers it)"
+adopt_casks "$AF_ROOT/Brewfile" "$AF_ROOT/roles/master/Brewfile"
 run brew bundle --no-upgrade --file "$AF_ROOT/Brewfile"
 run brew bundle --no-upgrade --file "$AF_ROOT/roles/master/Brewfile"

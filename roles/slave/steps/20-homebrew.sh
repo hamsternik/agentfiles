@@ -15,6 +15,7 @@ fi
 run brew update
 # --no-upgrade: install what is missing, never move installed versions.
 # Upgrades are deliberate: brew upgrade <name>, then af versions --record.
+adopt_casks "$AF_ROOT/Brewfile" "$AF_ROOT/roles/slave/Brewfile"
 run brew bundle --no-upgrade --file "$AF_ROOT/Brewfile"
 run brew bundle --no-upgrade --file "$AF_ROOT/roles/slave/Brewfile"
 ok "Brewfile applied"
