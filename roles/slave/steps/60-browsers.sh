@@ -4,15 +4,10 @@ set -euo pipefail
 . "$AF_ROOT/lib/common.sh"
 af_load_config
 
-# Browsers: Playwright's Chromium, pinned Chrome for Testing, Chrome profiles.
-have npx || die_or_warn "node missing; run step 20 first"
-
-log "Playwright Chromium (shared cache)"
-run npx -y playwright@latest install chromium
-
-log "Chrome for Testing -> $AF_HOME/browsers"
-run mkdir -p "$AF_HOME/browsers"
-run npx -y @puppeteer/browsers install chrome@stable --path "$AF_HOME/browsers"
+# Browsers: dedicated Chrome profiles (Google Chrome comes from the Brewfile).
+# No host-level Playwright or Chrome for Testing: neither has a Homebrew
+# package, and each project installs the browsers of its own Playwright
+# version in its agent.setup (docs/plans/PLAN-session-2.md).
 
 # Dedicated profiles; never your personal Google profile.
 #   us    -> all traffic via the US gateway

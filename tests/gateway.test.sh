@@ -39,7 +39,9 @@ check() {  # check <description> <command...>
   else echo "FAIL $what"; sed 's/^/     /' "$tmp/out"; echo "     -- calls:"; sed 's/^/     /' "$tmp/calls"; fails=$((fails + 1)); fi
 }
 
+image="$(sed -n 's/^ *image: *//p' "$repo/services/us-gateway/compose.yaml")"
 setup mullvad US true
+check "gluetun pinned by tag and digest"       grep -qE '^qmcgaw/gluetun:v[0-9.]+@sha256:[0-9a-f]{64}$' <<<"$image"
 check "mullvad, US exit: passes"               [ "$(gw_test)" = 0 ]
 check "mullvad: also checks the Mullvad exit"  grep -q 'am.i.mullvad.net' "$tmp/calls"
 check "goes through the local proxy"           grep -q -- '-x http://127.0.0.1:' "$tmp/calls"
