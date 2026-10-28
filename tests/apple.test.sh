@@ -9,19 +9,21 @@ step="$repo/roles/slave/steps/50-apple.sh"
 fails=0
 pin() { sed -n "s/^$1=//p" "$repo/config/versions.env" 2>/dev/null | head -1 || true; }
 want="$(pin AF_XCODE_VERSION)"; build="$(pin AF_XCODE_BUILD)"; min="$(pin AF_XCODES_MIN_VERSION)"
+rt="$(awk '$1 == "iOS" {print $2; exit}' "$repo/apple/runtimes.txt" || true)"   # pinned iOS runtime build
 
-# setup <selected "version build" or ""> <xcodes installed lines> <sdk> <runtime versions> <devtools> [xcodes version]
+# setup <selected "version build" or ""> <xcodes installed lines> <unused> <Ready runtime builds> <devtools> [xcodes version]
 setup() {
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/bin" "$tmp/local" "$tmp/home"
   : > "$tmp/calls"; : > "$tmp/local/machine.env"
   echo "$1" > "$tmp/selected"
   printf '%s' "$2" > "$tmp/installed"
-  local rts="" v
-  for v in $4; do
-    rts="$rts${rts:+,}{\"platform\":\"iOS\",\"version\":\"$v\",\"isAvailable\":true,\"identifier\":\"com.apple.CoreSimulator.SimRuntime.iOS-${v//./-}\",\"name\":\"iOS $v\"}"
+  local rts="" b n=0
+  for b in $4; do
+    n=$((n + 1))
+    rts="$rts${rts:+,}\"UUID-$n\":{\"build\":\"$b\",\"version\":\"27.x\",\"platformIdentifier\":\"com.apple.platform.iphonesimulator\",\"state\":\"Ready\"}"
   done
-  echo "{\"runtimes\":[$rts]}" > "$tmp/runtimes.json"
+  echo "{$rts}" > "$tmp/runtimes.json"
   cat > "$tmp/bin/sudo" <<EOF
 #!/bin/bash
 echo "sudo \$*" >> "$tmp/calls"; exec "\$@"
@@ -43,6 +45,7 @@ case "\$1" in
   version) echo "${6:-2.1.0}" ;;
   installed) cat "$tmp/installed" ;;
   select) grep "^\$2 (" "$tmp/installed" | sed -E 's/^([^ ]+) \\(([^)]+)\\).*/\\1 \\2/' > "$tmp/selected" ;;
+  runtimes) [[ -f "$tmp/rt_fail" ]] && exit 1; true ;;
 esac
 EOF
   cat > "$tmp/bin/xcrun" <<EOF
@@ -50,7 +53,7 @@ EOF
 echo "xcrun \$*" >> "$tmp/calls"
 case "\$*" in
   "--sdk iphonesimulator --show-sdk-version") [[ -n "$3" ]] && echo "$3" || exit 1 ;;
-  "simctl list runtimes -j") cat "$tmp/runtimes.json" ;;
+  "simctl runtime list -j") cat "$tmp/runtimes.json" ;;
 esac
 EOF
   cat > "$tmp/bin/DevToolsSecurity" <<EOF
@@ -93,12 +96,13 @@ check "no Xcode: manual install of the pin"         manual_has "xcodes install $
 check "no Xcode: nothing else attempted"            not_called "xcodebuild -license"
 rm -rf "$tmp"
 
-setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "$want" "$want" enabled; run_step
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "" "$rt" enabled; run_step
 check "pinned build selected: finishes"             finished
 check "pinned build selected: reported"             grep -q "Xcode $want ($build)" "$tmp/out"
 check "pinned build selected: no select/install"    not_called "xcodes select"
 check "pinned build selected: license accepted"     called "sudo xcodebuild -license accept"
-check "matching runtime: no download"               not_called "-downloadPlatform"
+check "pinned runtime build present: no install"   not_called "xcodes runtimes install"
+check "pinned runtime build present: no download"  not_called "-downloadPlatform"
 check "developer mode on: left alone"               not_called "DevToolsSecurity -enable"
 rm -rf "$tmp"
 
@@ -117,8 +121,15 @@ check "old xcodes: manual upgrade step"             manual_has "xcodes"
 check "old xcodes: names the minimum"               manual_has "$min"
 rm -rf "$tmp"
 
-setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "$want" "27.0" enabled; run_step
-check "old runtime only: downloads arm64 iOS"       called "xcodebuild -downloadPlatform iOS -architectureVariant arm64"
+check "runtimes.txt pins an iOS build"             [ -n "$rt" ]
+
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "" "OTHERBUILD" enabled; run_step
+check "runtime build missing: xcodes by build"      called "xcodes runtimes install $rt"
+check "runtime build missing: no fallback needed"   not_called "-downloadPlatform"
+rm -rf "$tmp"
+
+setup "$want $build" "$want ($build) (Selected)  /Applications/Xcode-$want.0.app" "" "" enabled; touch "$tmp/rt_fail"; run_step
+check "xcodes runtimes fails: arm64 fallback"       called "xcodebuild -downloadPlatform iOS -architectureVariant arm64"
 rm -rf "$tmp"
 
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }

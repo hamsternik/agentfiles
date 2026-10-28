@@ -40,25 +40,28 @@ else
   run sudo DevToolsSecurity -enable >/dev/null
 fi
 
-# Each platform needs a runtime that matches the SDK of the selected Xcode;
-# any older runtime does not count. arm64 only (smaller; default on Apple silicon).
-sdk_for() {
-  case "$1" in
-    iOS) echo iphonesimulator ;; watchOS) echo watchsimulator ;;
-    tvOS) echo appletvsimulator ;; visionOS) echo xrsimulator ;;
-  esac
+# Simulator runtimes pinned by build in apple/runtimes.txt ("<platform> <build>").
+# xcodes installs an exact build; xcodebuild (arm64, the platform's current
+# runtime) is the fallback, so the build is checked again afterwards.
+have_runtime() {  # have_runtime <build>: Ready in `simctl runtime list -j`
+  xcrun simctl runtime list -j 2>/dev/null \
+    | jq -e --arg b "$1" 'to_entries[] | select(.value.build == $b and .value.state == "Ready")' >/dev/null
 }
-runtimes="$(xcrun simctl list runtimes -j 2>/dev/null || echo '{"runtimes":[]}')"
-while read -r platform; do
+while read -r platform rt_build _; do
   [[ -z "$platform" || "$platform" == \#* ]] && continue
-  sdk="$(xcrun --sdk "$(sdk_for "$platform")" --show-sdk-version 2>/dev/null || true)"
-  if [[ -n "$sdk" ]] && jq -e --arg p "$platform" --arg v "$sdk" \
-       '.runtimes[] | select(.platform == $p and .isAvailable and (.version | startswith($v)))' \
-       >/dev/null <<<"$runtimes"; then
-    ok "$platform $sdk runtime present"
-  else
-    log "Downloading the $platform ${sdk:-latest} simulator runtime"
-    run xcodebuild -downloadPlatform "$platform" -architectureVariant arm64
+  if [[ -z "$rt_build" || "$rt_build" == \#* ]]; then
+    die_or_warn "apple/runtimes.txt: '$platform' has no build; write '<platform> <build>'"
+    continue
+  fi
+  if have_runtime "$rt_build"; then
+    ok "$platform runtime $rt_build present"
+    continue
+  fi
+  log "Installing the $platform simulator runtime $rt_build"
+  run xcodes runtimes install "$rt_build" \
+    || run xcodebuild -downloadPlatform "$platform" -architectureVariant arm64
+  if [[ "$AF_DRY_RUN" != 1 ]] && ! have_runtime "$rt_build"; then
+    warn "$platform runtime $rt_build still missing (the fallback installs the current one); af versions will report it"
   fi
 done < "$AF_ROOT/apple/runtimes.txt"
 

@@ -1,6 +1,6 @@
-# Simulator platforms to download with `xcodebuild -downloadPlatform <name>`.
+# Simulator runtimes, pinned by build: "<platform> <build>" (xcrun simctl runtime list -j).
 # Keep this short: each runtime costs several GB of disk.
-iOS
+iOS 24A94425     # iOS 27.1 runtime, matches the Xcode 27.1 SDK (docs/research/RESEARCH-version-management.md)
 # watchOS
 # visionOS
 # tvOS
