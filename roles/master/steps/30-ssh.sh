@@ -25,9 +25,20 @@ SSH
   ok "Wrote $conf"
 fi
 
-if grep -qs "Include $conf" "$HOME/.ssh/config" 2>/dev/null; then
-  ok "$HOME/.ssh/config already includes it"
+# ~/.ssh/config belongs to the dotfiles. If it includes ~/.ssh/config.local
+# (machine-local, untracked), add our Include there instead of editing it.
+include="Include $conf"
+local_conf="$HOME/.ssh/config.local"
+if grep -qsxF "$include" "$HOME/.ssh/config" "$local_conf"; then
+  ok "SSH config already includes $conf"
+elif grep -qsE "^[[:space:]]*Include[[:space:]]+(~|$HOME)/\.ssh/config\.local([[:space:]]|$)" "$HOME/.ssh/config"; then
+  if [[ ! -e "$local_conf" ]]; then
+    run touch "$local_conf"
+    run chmod 600 "$local_conf"
+  fi
+  run sh -c "printf '%s\n' '$include' >> '$local_conf'"
+  ok "added '$include' to $local_conf"
 else
-  manual "Add this as the FIRST line of ~/.ssh/config (or your dotfiles ssh config):  Include $conf"
+  manual "Add this as the FIRST line of ~/.ssh/config (or your dotfiles ssh config):  $include"
 fi
 manual "Copy your public key to the host: ssh-copy-id agent"

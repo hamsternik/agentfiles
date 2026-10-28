@@ -36,7 +36,7 @@ case "$role" in
     ;;
   master)
     check "brew bundle satisfied"   brew bundle check --file "$AF_ROOT/roles/master/Brewfile"
-    check "ssh include configured"  grep -qs "Include $AF_HOME/ssh_config" "$HOME/.ssh/config"
+    check "ssh include configured"  grep -qsxF "Include $AF_HOME/ssh_config" "$HOME/.ssh/config" "$HOME/.ssh/config.local"
     check "slave reachable over ssh" ssh -o BatchMode=yes -o ConnectTimeout=5 agent true
     check "US proxy exits in US"    bash -c "curl -fsS --max-time 10 -x '${AF_US_PROXY_URL:-http://$AF_HOST_TAILNET:$AF_US_PROXY_PORT}' https://www.cloudflare.com/cdn-cgi/trace | grep -qx loc=US"
     ;;
