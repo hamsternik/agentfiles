@@ -13,6 +13,18 @@ if ! have brew; then
   [[ "$AF_DRY_RUN" == 1 ]] || eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 run brew update
-run brew bundle --file "$AF_ROOT/Brewfile"
-run brew bundle --file "$AF_ROOT/roles/slave/Brewfile"
+# --no-upgrade: install what is missing, never move installed versions.
+# Upgrades are deliberate: brew upgrade <name>, then af versions --record.
+run brew bundle --no-upgrade --file "$AF_ROOT/Brewfile"
+run brew bundle --no-upgrade --file "$AF_ROOT/roles/slave/Brewfile"
 ok "Brewfile applied"
+
+# node@NN is keg-only (not on PATH); link it unless `node` already is that major.
+node_formula="$(grep -oE 'brew "node@[0-9]+"' "$AF_ROOT/roles/slave/Brewfile" | grep -oE 'node@[0-9]+' || true)"
+if [[ -n "$node_formula" ]]; then
+  if [[ "$(node --version 2>/dev/null)" == "v${node_formula#node@}."* ]]; then
+    ok "node is $node_formula"
+  else
+    run brew link --overwrite --force "$node_formula"
+  fi
+fi

@@ -8,7 +8,7 @@ brew "tmux"
 brew "mosh"
 
 # Runtimes for agents
-brew "node"
+brew "node@24"       # LTS line; keg-only, step 20 links it (patch versions move)
 brew "python"
 
 # Apple toolchain management

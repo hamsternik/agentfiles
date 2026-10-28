@@ -8,7 +8,7 @@ help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 deps: ## Install repo dependencies (gitleaks, shellcheck, yq, jq) from ./Brewfile
-	brew bundle --file Brewfile
+	brew bundle --no-upgrade --file Brewfile
 
 slave: hooks ## Bootstrap this Mac as the slave (always-on agent host)
 	./bootstrap.sh slave
