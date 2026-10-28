@@ -24,4 +24,5 @@ cask "orbstack"       # lighter than Docker Desktop on 16 GB
 cask "google-chrome"  # real Chrome for Claude in Chrome profiles
 cask "claude"         # Claude desktop app
 cask "claude-code"    # Claude Code CLI
+cask "mullvad-vpn"    # bridge for US egress until the gluetun gateway (Phase 3) works; remove then
 cask "aldente"        # cap battery charge on an always-plugged laptop
