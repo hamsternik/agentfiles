@@ -59,22 +59,35 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 | Secrets | macOS Keychain via `af secret`; never in git or `local/` |
 | Shell/editor config | Delegated to the personal dotfiles repo (`DOTFILES_REPO` + `DOTFILES_TARGETS`) |
 | Repo visibility | Private first; public only after a full-history gitleaks scan |
+| Disk encryption | FileVault **on** for the slave. No automatic login; after an unplanned restart, unlock over SSH from the same LAN (Tailscale starts only after the unlock). See runbook |
+| Lid | Slave runs with the lid closed: `AF_LID_CLOSED=1` (step 15, `pmset disablesleep 1`). Display for Screen Sharing: decided on the M1 (HDMI cable or dummy plug) |
+| GitHub identities | Slave signs in to `gh` with the personal **and** the work account (full access; git picks the identity per remote via SSH host aliases) |
+| Sharing services | Remote Login + Screen Sharing on, only for the agent user. Remote Management and Remote Application Scripting off |
+| Tests | `make test` (stubbed, macOS `/bin/bash` 3.2); real-host checks: `make e2e-power`, `make remote-step` |
 
 ## Phases
 
 ### Phase 0 — Prepare (on the master)
-- [ ] Push this repo to a **private** GitHub repo; run `make hooks`.
+- [x] Push this repo to a **private** GitHub repo; run `make hooks`.
 - [ ] Fill `local/denylist.txt` on the master with employer, client and work-domain terms.
 - [ ] List what moves to the host: long-running jobs, crawlers, anything needing US egress.
 - [ ] In the VPN account, generate a WireGuard key for the host (uses one device slot).
-- [ ] Decide FileVault on/off for the host (see runbook: *Reboots and FileVault*).
-- [ ] Back up anything on the spare Mac you still want.
+- [x] Decide FileVault on/off for the host: **on** (see runbook: *Reboots and FileVault*).
+- [x] Back up anything on the spare Mac you still want.
+- [x] `make lint` clean; `--dry-run` changes nothing (tests/dry-run.test.sh; both roles run on the master).
+- [x] macOS commands checked against current docs: `docs/research/RESEARCH-macos-commands.md`.
+- [ ] Decide the version-pin strategy: `docs/research/RESEARCH-version-management.md` (recommends mise + xcodes + `config/versions.env`).
+- [ ] Decide the user model on the slave: one admin `agent` (now) or admin + standard `agent`. Reversible without a wipe.
+- [ ] Decide the tailnet tag + ACL for the slave (example in `docs/security.md`).
 
 ### Phase 1 — Wipe and base the host
-- [ ] Erase the spare Mac; install the newest macOS it supports.
-- [ ] Create an admin user for agents (e.g. `agent`). Skip iCloud on this machine.
-- [ ] Install Command Line Tools: `xcode-select --install`.
-- [ ] `git clone` this repo over HTTPS; run `./bootstrap.sh slave` (first run creates `local/`).
+- [x] Erase the spare Mac; install the newest macOS it supports (Erase All Content and Settings, then macOS 27.2).
+- [x] Create an admin user for agents (e.g. `agent`). Skip iCloud on this machine.
+- [x] Install Command Line Tools: `xcode-select --install`.
+- [x] Turn on Remote Login and Screen Sharing (not Remote Management) for the agent user.
+- [x] Lid closed: `make remote-step TARGET=agent@<host> STEP=15 VARS="AF_LID_CLOSED=1"`; `make e2e-power` passed.
+- [ ] Install Homebrew and `gh`; `gh auth login` (both accounts); `gh repo clone <you>/agentfiles ~/agentfiles`.
+- [ ] `./bootstrap.sh slave --dry-run`, then `./bootstrap.sh slave` (first run creates `local/`).
 - [ ] Fill `local/machine.env`, then `make slave`. Work through the printed manual steps.
 - [ ] `af doctor` passes the base checks (sleep, Remote Login, Tailscale, Homebrew).
 
@@ -100,7 +113,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 - [ ] Repeat for the remaining long-running projects; remove their schedules from the master.
 
 ### Phase 5 — Interactive agent work on the host
-- [ ] Sign in to Claude Code and the Claude desktop app on the host; `gh auth login` with scoped access.
+- [ ] Sign in to Claude Code and the Claude desktop app on the host; `gh auth login` (personal and work accounts).
 - [ ] Set up remote access to Claude sessions on the host (check current Claude Code / desktop options).
 - [ ] Daily loop: `af attach`, `af worktree new`, agent works, `af worktree rm` after merge.
 - [ ] Confirm agents follow `claude/CLAUDE.host.md` (builds via `af build`, simulators via `af sim run`).
@@ -117,6 +130,37 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 ### Phase 7 — Reproducibility drill
 - [ ] Rebuild the host from scratch (or set up a second machine) using only this repo and the runbook.
 - [ ] Time it; anything done by hand that could be scripted becomes a step; the rest goes in the runbook.
+
+## Known gaps (verify on the M1)
+
+Everything below is either untested on real hardware or only partly tested. Commands come from
+`docs/research/RESEARCH-macos-commands.md` (section "Only verifiable on the M1").
+
+- **Full bootstrap**: only step 15 ran on the slave. Steps 00–90 ran as dry-runs and stub tests.
+- **FileVault**: the SSH unlock at the pre-boot screen (macOS 26+, LAN only) is not tested yet;
+  nor is the state after it or after `fdesetup authrestart` (GUI session up or login window?).
+- **Lid closed**: `SleepDisabled 1` after a reboot; thermals during long Xcode builds.
+- **Display**: Screen Sharing with the lid closed, with HDMI 2 connected while the monitor shows
+  another input, is in standby, or is off. Fallback: dummy plug.
+- **Remote Login / Screen Sharing**: the `launchctl print-disabled` format (the master has no
+  overrides to compare); whether `launchctl enable system/com.openssh.sshd` works without Full
+  Disk Access and is honoured by the FileVault SSH unlock.
+- **Keychain over SSH and from launchd**: reads may hang (now cut off after
+  `AF_KEYCHAIN_TIMEOUT_SECONDS`); `security unlock-keychain` over SSH.
+- **launchd**: LaunchAgents load only with a GUI session; step 90 skips them over SSH before login.
+- **Xcode**: xcodes 2.1.0+ sign-in over SSH; `-downloadPlatform iOS -architectureVariant arm64`
+  without an Apple ID; the SDK-matched runtime check after Xcode 27.1.
+- **OrbStack**: `orb start` on a first run over SSH; "Start at login" (no CLI key);
+  the port bind to the Tailscale 100.x address; `/dev/net/tun` + `NET_ADMIN` for gluetun.
+- **gluetun**: empty `SERVER_CITIES`; `:latest` tracks the development branch (pin pending the
+  version decision).
+- **Tailscale**: `tailscaled` (formula) is down until the FileVault unlock; coexistence with the
+  Mullvad app on the master (Mullvad needs "Local network sharing" for LAN access).
+- **SSH PATH**: `ssh agent 'command -v tmux mosh-server'` on the slave (af attach now uses absolute paths).
+- **Homebrew**: step 20 runs `brew update` + `brew bundle`, which upgrades on every re-run
+  (part of the version decision).
+- **perl**: `af secret` uses `/usr/bin/perl` for the timeout; Apple calls it deprecated.
+- **CI**: runs only shellcheck and gitleaks. `make test` needs macOS `/bin/bash` 3.2 and is not in CI.
 
 ## Later / open
 - nix-darwin, if the shell-based bootstrap starts to drift.
