@@ -53,11 +53,14 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 | GUI | macOS Screen Sharing over Tailscale (`af attach --screen`) |
 | Async control | GitHub issues and PRs |
 | Resource limits (16 GB / 512 GB) | 1 Xcode build, ≤2 simulators, ≤2 browsers, ≤6 worktrees; disk warn 80% / block 90% |
-| Apple toolchain | Pinned Xcode via `xcodes`, short runtime list, simulator-only builds at first; signing stays on the master |
-| Browsers | Headless Playwright for scripted work; dedicated Chrome profiles (`us`, `agent`) for Claude in Chrome; Chrome for Testing for validation |
+| Apple toolchain | Xcode pinned by version **and** build in `config/versions.env` (xcodes), simulator runtimes pinned by build in `apple/runtimes.txt`; simulator-only builds at first; signing stays on the master |
+| Browsers | Dedicated Chrome profiles (`us`, `agent`) for Claude in Chrome; projects install the browsers of their own Playwright version (no host-level Playwright or Chrome for Testing: no Homebrew package) |
 | US egress | gluetun + WireGuard VPN in OrbStack with kill switch; HTTP proxy on localhost and the tailnet IP only |
 | Secrets | macOS Keychain via `af secret`; never in git or `local/` |
-| Shell/editor config | Delegated to the personal dotfiles repo (`DOTFILES_REPO` + `DOTFILES_TARGETS`) |
+| Terminal environment | Slave step **25**, right after Homebrew: the personal dotfiles repo (`DOTFILES_REPO`, default in `local.example`), its `Brewfile.terminal`, the `DOTFILES_TARGETS` make targets, fish as the login shell (`AF_LOGIN_SHELL`) |
+| Install source | Homebrew formula or cask first; a native installer only after a discussion per tool. Hand-installed apps with a cask are adopted (`brew install --cask --adopt`) |
+| Versions | Strategy A: `brew bundle --no-upgrade`, pins in `config/versions.env` / `apple/runtimes.txt` / compose digest, snapshot `config/brew-versions.<role>.txt`; `af versions` fails on drift. mise (Strategy B) later |
+| Mullvad app on the slave | Bridge for US egress until the gluetun gateway works; step 30 keeps its local network sharing on |
 | Repo visibility | Private first; public only after a full-history gitleaks scan |
 | Disk encryption | FileVault **on** for the slave. No automatic login; after an unplanned restart, unlock over SSH from the same LAN (Tailscale starts only after the unlock). See runbook |
 | Lid | Slave runs with the lid closed: `AF_LID_CLOSED=1` (step 15, `pmset disablesleep 1`). Display for Screen Sharing: decided on the M1 (HDMI cable or dummy plug) |
@@ -76,7 +79,10 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 - [x] Back up anything on the spare Mac you still want.
 - [x] `make lint` clean; `--dry-run` changes nothing (tests/dry-run.test.sh; both roles run on the master).
 - [x] macOS commands checked against current docs: `docs/research/RESEARCH-macos-commands.md`.
-- [ ] Decide the version-pin strategy: `docs/research/RESEARCH-version-management.md` (recommends mise + xcodes + `config/versions.env`).
+- [x] Decide the version-pin strategy: **A** now, B (mise) later (`docs/plans/PLAN-session-2.md`).
+- [ ] Your dotfiles prerequisites for step 25 (`Brewfile.terminal`, no `neofetch`, `$HOME` instead of
+      hardcoded paths, safe `zshenv`, `ssh-add -l || true`, fish folders/fisher, node@24):
+      see `docs/plans/PLAN-session-2.md`, Part 1.
 - [ ] Decide the user model on the slave: one admin `agent` (now) or admin + standard `agent`. Reversible without a wipe.
 - [ ] Decide the tailnet tag + ACL for the slave (example in `docs/security.md`).
 
@@ -152,13 +158,16 @@ Everything below is either untested on real hardware or only partly tested. Comm
   without an Apple ID; the SDK-matched runtime check after Xcode 27.1.
 - **OrbStack**: `orb start` on a first run over SSH; "Start at login" (no CLI key);
   the port bind to the Tailscale 100.x address; `/dev/net/tun` + `NET_ADMIN` for gluetun.
-- **gluetun**: empty `SERVER_CITIES`; `:latest` tracks the development branch (pin pending the
-  version decision).
+- **gluetun**: empty `SERVER_CITIES`; the pinned `v3.41.3` digest on OrbStack.
 - **Tailscale**: `tailscaled` (formula) is down until the FileVault unlock; coexistence with the
-  Mullvad app on the master (Mullvad needs "Local network sharing" for LAN access).
+  Mullvad app on the master and on the slave (Mullvad needs "Local network sharing" for LAN
+  access; step 30 sets it with `mullvad lan set allow`, untested without sudo on the slave).
 - **SSH PATH**: `ssh agent 'command -v tmux mosh-server'` on the slave (af attach now uses absolute paths).
-- **Homebrew**: step 20 runs `brew update` + `brew bundle`, which upgrades on every re-run
-  (part of the version decision).
+- **Terminal (step 25)**: needs your dotfiles prerequisites; which shell Claude Code uses for its
+  tools when the login shell is fish; the `ssh` target needs your keys on the slave.
+- **Versions**: the first `af versions --record` on the slave (commit the snapshot);
+  `xcodes runtimes install <build>` by build; Xcode 27.1 needs an Apple ID sign-in or a copied `.xip`.
+- **Adopted casks**: `brew install --cask --adopt` for the hand-installed Claude and Mullvad apps.
 - **perl**: `af secret` uses `/usr/bin/perl` for the timeout; Apple calls it deprecated.
 - **CI**: runs only shellcheck and gitleaks. `make test` needs macOS `/bin/bash` 3.2 and is not in CI.
 

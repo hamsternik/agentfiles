@@ -40,7 +40,9 @@ roles/slave/            Brewfile + numbered idempotent steps for the agent host
 roles/master/           Brewfile + steps for the driving laptop
 bin/af                  the `af` CLI (af help)
 config/limits.env       default limits for a 16 GB / 512 GB machine
-apple/                  pinned Xcode version, simulator runtimes
+config/versions.env     exact versions (Xcode version + build, xcodes minimum)
+config/brew-versions.*  Homebrew snapshot per role (af versions --record)
+apple/                  simulator runtimes pinned by build
 services/us-gateway/    gluetun compose files (VPN egress + HTTP proxy)
 services/launchd/       health + cleanup agent templates
 claude/CLAUDE.host.md   global rules for agents running on the host
@@ -68,6 +70,7 @@ docs/                   PLAN, runbook, security; docs/research/ = dated evidence
 | `af health` / `af cleanup` | disk, memory, swap, gateway checks / reclaim disk |
 | `af attach [--screen]` | from the master: tmux on the host, or Screen Sharing |
 | `af doctor` | check this machine against its role |
+| `af versions [--record]` | pinned and recorded versions vs installed; fails on drift |
 
 ## Tests
 
@@ -80,9 +83,11 @@ make e2e-power TARGET=agent@<host>          # lid-closed check on the real host
 
 ## Relationship to dotfiles
 
-Shell, editor, git and tmux config stay in your personal dotfiles repo. Set
-`DOTFILES_REPO` and `DOTFILES_TARGETS` in `local/machine.env` and the host step
-`40-dotfiles` clones it and runs those make targets.
+Shell, editor, git and tmux config stay in your personal dotfiles repo. Slave step
+`25-terminal` runs right after Homebrew: it clones `DOTFILES_REPO` (default in
+`local.example/machine.env`), installs the repo's `Brewfile.terminal`, runs the
+`DOTFILES_TARGETS` make targets and sets `AF_LOGIN_SHELL` (fish) as the login shell.
+So you and the agents work in the same environment from the first SSH session on.
 
 ## Safety
 

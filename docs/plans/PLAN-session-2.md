@@ -1,6 +1,8 @@
 # PLAN: session 2 — terminal environment first, then version pins
 
-Status: **approved 2026-10-28**, in progress.
+Status: **approved 2026-10-28; agentfiles work done** (dotfiles prerequisites in Part 1 are open).
+Additions during execution (approved in chat): adopt hand-installed casks before `brew bundle`;
+the Mullvad app on the slave as a bridge until Phase 3, with local network sharing kept on.
 Evidence: `docs/research/RESEARCH-version-management.md`, `docs/research/RESEARCH-macos-commands.md`,
 and a read of the dotfiles repo (https://github.com/hamsternik/dotfiles, public) on 2026-10-28.
 

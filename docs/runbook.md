@@ -17,8 +17,11 @@
    `local/projects.yaml`, `local/limits.env` (keep a copy of `local/` in your password manager
    or another private place; it is not in git).
 7. `make slave`, then do the printed manual steps. Re-run `make slave` until it is clean.
+   Step 25 applies your dotfiles (needs `Brewfile.terminal` in the dotfiles repo) and makes
+   fish the login shell, so the next SSH session already has your environment.
 8. Secrets: `af secret set us-gateway/wireguard-private-key` and `.../wireguard-addresses`.
-9. `af doctor`.
+9. `af versions --record`, then commit `config/brew-versions.slave.txt` (the first snapshot).
+10. `af doctor`.
 
 Re-running `make slave` at any time applies changes from the repo.
 
@@ -31,6 +34,17 @@ Re-running `make slave` at any time applies changes from the repo.
 
 `remote-step` copies the working tree to `~/agentfiles-dev` on the host and never touches its
 own `~/agentfiles`. Type the SSH password within 2 minutes (sshd `LoginGraceTime`).
+
+## Upgrade a tool (versions change only on purpose)
+| What | How |
+|---|---|
+| A Homebrew formula or cask | `brew upgrade <name>`, then `af versions --record`, then commit the snapshot diff |
+| Xcode | edit `AF_XCODE_VERSION` + `AF_XCODE_BUILD` in `config/versions.env`, run `./bootstrap.sh slave --only 50`, commit |
+| A simulator runtime | edit the build in `apple/runtimes.txt` (match the Xcode SDK), run step 50, commit |
+| gluetun | new `tag@sha256:digest` in `services/us-gateway/compose.yaml`, `af gateway up`, commit |
+| Check | `af versions` exits 0 (also part of `af doctor`) |
+
+Self-updating apps (Chrome, Claude desktop, OrbStack, AlDente, Mullvad) are not recorded.
 
 ## Daily operations
 | Task | Command |
@@ -85,10 +99,13 @@ own `~/agentfiles`. Type the SSH password within 2 minutes (sshd `LoginGraceTime
    If it started before Tailscale had an IP, the health check re-runs `af gateway up`.
 3. `af doctor`.
 
-## Master with a system-wide VPN
-With the Mullvad app connected on the master, LAN traffic is blocked: `<host>.local` does not
-resolve and SSH / Screen Sharing time out. Turn on Mullvad > Settings > VPN settings >
-"Local network sharing". Phase 3 (US gateway on the host) removes the need for the app.
+## The Mullvad app (master, and the slave as a bridge)
+With the Mullvad app connected and "Local network sharing" off, the Mac blocks LAN traffic:
+`<host>.local` does not resolve and SSH / Screen Sharing time out. **On the slave this also
+breaks the FileVault SSH unlock after a restart.** Turn on Mullvad > Settings > VPN settings >
+"Local network sharing" (CLI: `mullvad lan set allow`; slave step 30 does it). If the slave is
+already cut off, fix it at the machine (open the lid, or HDMI 2 + a keyboard). Phase 3 (US
+gateway on the host) removes the need for the app on the slave.
 
 ## Troubleshooting
 - **Gateway test fails:** `af gateway logs`. The test needs `loc=US` from Cloudflare's trace

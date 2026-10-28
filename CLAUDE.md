@@ -31,3 +31,8 @@ plus the `af` CLI. See `docs/PLAN.md`.
 - Prefer tools that ship with macOS (e.g. `/usr/bin/jq`, `/usr/bin/perl`) over Homebrew ones in
   steps that may run before Homebrew.
 - `systemsetup` exits 0 on failure: never rely on its exit code.
+- Install source: Homebrew formula or cask first; anything else (curl script, npx, pkg) only
+  after the owner agrees, per tool. Exact versions live in `config/versions.env`,
+  `apple/runtimes.txt` and the compose digest; `af versions` checks them and the Homebrew snapshot.
+- The slave's login shell is fish: every remote command (`ssh host cmd`) must parse in fish and
+  sh (`tests/remote-shell.test.sh`).
