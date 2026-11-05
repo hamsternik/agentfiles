@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Claude Inbox, local side: outbox, local log, role, page URL (docs/inbox.md)
+# shellcheck disable=SC2016  # the `sh -c` scripts get their paths as $1/$2, on purpose
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+box="${AF_INBOX_DIR:-$HOME/.claude/inbox}"
+types="decision approval review human_step task"
+states="inbox in_progress waiting snoozed done archived"
+
+usage() {
+  cat <<'EOF'
+usage: af inbox <command> [args]
+
+  role                         this machine's role: AF_INBOX_ROLE, the af role, or master
+  url [<url>]                  print, or set, the Inbox page (https://claude.ai/artifact/...)
+  new-id                       print a new item id (I-<YYYYMMDD>-<4 hex>)
+  add --type T --title S [--state S] [--wake D] [--next S] [--project P] [--ref R]
+      [--session ID]... [--file PATH]... [--default S] [--owner O] [--by B] [--id ID]
+                               queue a new item in the outbox; prints its id
+  move <id> <state> [--wake D] [--by B]   queue a state change (snoozed/archived: --by owner)
+  note <id> <text> [--by B]    queue a note
+  answer <id> <text> [--by B]  queue an answer
+  take                         print the queued lines and set them aside until `ack`
+  ack                          the taken lines are in the db: move them to the local log
+  log '<json>'                 append one db change to the local log
+  export                       append JSON lines from stdin to export-<YYYYMM>.jsonl
+  status                       role, url, outbox and log state (key=value lines)
+
+Types:  decision approval review human_step task
+States: inbox in_progress waiting snoozed done archived
+EOF
+}
+
+now()   { printf '%s\n' "${AF_INBOX_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"; }
+role()  {
+  local r="${AF_INBOX_ROLE:-}"
+  [[ -n "$r" ]] || { [[ -f "$AF_STATE/role" ]] && r="$(cat "$AF_STATE/role")"; } || true
+  printf '%s\n' "${r:-master}"
+}
+in_list() { case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+valid_id()   { [[ "$1" =~ ^I-[0-9]{8}-[0-9a-f]{4}$ ]]; }
+valid_wake() { [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2})?Z)?$ ]]; }
+
+# Run a command while holding the inbox lock (macOS has no flock(1); perl ships with it).
+with_lock() {
+  mkdir -p "$box"
+  /usr/bin/perl -MFcntl=:flock -e \
+    'open(my $l, ">>", shift) or die "lock: $!\n"; flock($l, LOCK_EX) or die "lock: $!\n"; system(@ARGV); exit($? >> 8)' \
+    "$box/.lock" "$@"
+}
+
+append() {  # append <file> <one JSON line>
+  local bytes
+  bytes="$(printf '%s' "$2" | wc -c | tr -d ' ')"
+  (( bytes <= AF_INBOX_MAX_LINE_BYTES )) || die "line is $bytes bytes; the limit is $AF_INBOX_MAX_LINE_BYTES (AF_INBOX_MAX_LINE_BYTES). Shorten the title, next or note."
+  with_lock /bin/sh -c 'printf "%s\n" "$1" >> "$2"' sh "$2" "$1"
+}
+
+outbox()  { printf '%s/outbox-%s.jsonl\n' "$box" "$(role)"; }
+sending() { printf '%s/outbox-%s.sending.jsonl\n' "$box" "$(role)"; }
+logfile() { printf '%s/log-%s.jsonl\n' "$box" "$(role)"; }
+
+check_wake() {  # check_wake <state> <wake>
+  if [[ "$1" == waiting || "$1" == snoozed ]]; then
+    [[ -n "$2" ]] || die "state $1 needs --wake YYYY-MM-DD"
+  fi
+  [[ -z "$2" ]] || valid_wake "$2" || die "bad --wake '$2' (YYYY-MM-DD or YYYY-MM-DDTHH:MMZ)"
+}
+
+# "local_abc" -> "<role>:local_abc"; an id that already names a role stays as it is.
+qualify() { if [[ "$1" =~ ^[a-z0-9-]+: ]]; then printf '%s\n' "$1"; else printf '%s:%s\n' "$(role)" "$1"; fi; }
+
+cmd_new_id() {
+  local day hex
+  day="$(now | cut -c1-10 | tr -d -)"
+  hex="$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
+  printf 'I-%s-%s\n' "$day" "$hex"
+}
+
+cmd_url() {
+  if [[ $# -gt 0 ]]; then
+    [[ "$1" =~ ^https://claude\.ai/(code/)?artifact/[A-Za-z0-9_-]+$ ]] \
+      || die "not an artifact address: $1 (want https://claude.ai/artifact/<id>)"
+    mkdir -p "$box"
+    printf '%s\n' "$1" > "$box/url"
+    ok "Inbox page: $1"
+  else
+    [[ -s "$box/url" ]] || die "no Inbox page set on this machine. Set it with: af inbox url <https://claude.ai/artifact/...>"
+    cat "$box/url"
+  fi
+}
+
+cmd_add() {
+  local type="" title="" state=inbox wake="" next="" project="" ref="" default="" owner="" by="" id=""
+  local sessions="" files="" ts line
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --type) type="${2:-}"; shift 2 ;;
+      --title) title="${2:-}"; shift 2 ;;
+      --state) state="${2:-}"; shift 2 ;;
+      --wake) wake="${2:-}"; shift 2 ;;
+      --next) next="${2:-}"; shift 2 ;;
+      --project) project="${2:-}"; shift 2 ;;
+      --ref) ref="${2:-}"; shift 2 ;;
+      --default) default="${2:-}"; shift 2 ;;
+      --owner) owner="${2:-}"; shift 2 ;;
+      --by) by="${2:-}"; shift 2 ;;
+      --id) id="${2:-}"; shift 2 ;;
+      --session) sessions="$sessions$(qualify "${2:-}")"$'\n'; shift 2 ;;
+      --file) files="$files$(qualify "${2:-}")"$'\n'; shift 2 ;;
+      *) die "add: unknown argument '$1' (af inbox help)" ;;
+    esac
+  done
+  [[ -n "$type" ]] || die "add needs --type ($types)"
+  in_list "$type" "$types" || die "unknown type '$type' ($types)"
+  [[ -n "$title" ]] || die "add needs --title"
+  in_list "$state" "$states" || die "unknown state '$state' ($states)"
+  [[ "$state" != snoozed && "$state" != archived ]] || die "a new item cannot start as $state; add it, then move it"
+  check_wake "$state" "$wake"
+  [[ -n "$id" ]] || id="$(cmd_new_id)"
+  valid_id "$id" || die "bad id '$id' (I-<YYYYMMDD>-<4 hex>)"
+  if [[ -z "$owner" ]]; then
+    if [[ "$state" == inbox || "$state" == "done" ]]; then owner=owner; else owner=agent; fi
+  fi
+  [[ -n "$by" ]] || by="agent:$(role)"
+  ts="$(now)"
+  line="$(jq -nc --arg ts "$ts" --arg by "$by" --arg role "$(role)" --arg id "$id" --arg type "$type" \
+    --arg state "$state" --arg title "$title" --arg project "$project" --arg owner "$owner" \
+    --arg next "$next" --arg wake "$wake" --arg ref "$ref" --arg default "$default" \
+    --arg sessions "$sessions" --arg files "$files" '
+    def opt: if . == "" then null else . end;
+    def list: split("\n") | map(select(length > 0));
+    {ts: $ts, op: "add", by: $by, role: $role,
+     item: {id: $id, type: $type, state: $state, prev_state: null, title: $title,
+            project: ($project | opt), owner: $owner, next: ($next | opt), wake: ($wake | opt),
+            links: {sessions: ($sessions | list), files: ($files | list), ref: ($ref | opt)},
+            default: ($default | opt), answer: null, notes: [],
+            created_at: $ts, updated_at: $ts, updated_by: $by}}')"
+  append "$(outbox)" "$line"
+  printf '%s\n' "$id"
+}
+
+cmd_move() {
+  [[ $# -ge 2 ]] || die "usage: af inbox move <id> <state> [--wake D] [--by B]"
+  local id="$1" state="$2" wake="" by=""; shift 2
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --wake) wake="${2:-}"; shift 2 ;;
+      --by) by="${2:-}"; shift 2 ;;
+      *) die "move: unknown argument '$1'" ;;
+    esac
+  done
+  valid_id "$id" || die "bad id '$id' (I-<YYYYMMDD>-<4 hex>)"
+  in_list "$state" "$states" || die "unknown state '$state' ($states)"
+  [[ -n "$by" ]] || by="agent:$(role)"
+  if [[ "$state" == snoozed || "$state" == archived ]]; then
+    [[ "$by" == owner ]] || die "only the owner snoozes or archives (--by owner, on the owner's word in chat)"
+  fi
+  check_wake "$state" "$wake"
+  append "$(outbox)" "$(jq -nc --arg ts "$(now)" --arg by "$by" --arg role "$(role)" --arg id "$id" \
+    --arg state "$state" --arg wake "$wake" \
+    '{ts: $ts, op: "move", by: $by, role: $role, id: $id, state: $state, wake: (if $wake == "" then null else $wake end)}')"
+}
+
+cmd_text() {  # cmd_text note|answer <id> <text> [--by B]
+  local op="$1"; shift
+  [[ $# -ge 2 && -n "$2" ]] || die "usage: af inbox $op <id> <text> [--by B]"
+  local id="$1" text="$2" by=""; shift 2
+  [[ "${1:-}" != --by ]] || by="${2:-}"
+  valid_id "$id" || die "bad id '$id' (I-<YYYYMMDD>-<4 hex>)"
+  [[ -n "$by" ]] || by="agent:$(role)"
+  append "$(outbox)" "$(jq -nc --arg ts "$(now)" --arg op "$op" --arg by "$by" --arg role "$(role)" \
+    --arg id "$id" --arg text "$text" '{ts: $ts, op: $op, by: $by, role: $role, id: $id, text: $text}')"
+}
+
+cmd_take() {
+  # Set the outbox aside (atomic rename under the lock); a take without an ack
+  # returns the same lines again, and new adds go to a fresh outbox meanwhile.
+  with_lock /bin/sh -c '[ -e "$2" ] || { [ -e "$1" ] && mv "$1" "$2"; }; true' sh "$(outbox)" "$(sending)"
+  [[ ! -f "$(sending)" ]] || cat "$(sending)"
+}
+
+cmd_ack() {
+  with_lock /bin/sh -c 'if [ -e "$1" ]; then cat "$1" >> "$2" && rm -f "$1"; fi' sh "$(sending)" "$(logfile)"
+}
+
+cmd_log() {
+  [[ $# -eq 1 ]] || die "usage: af inbox log '<json object>'"
+  local line
+  line="$(jq -ec --arg ts "$(now)" --arg role "$(role)" \
+    'if type == "object" then . + {ts: (.ts // $ts), role: $role} else error("not an object") end' <<<"$1" 2>/dev/null)" \
+    || die "log needs one JSON object"
+  append "$(logfile)" "$line"
+}
+
+cmd_export() {
+  local month tmpf
+  month="$(now | cut -c1-7 | tr -d -)"
+  tmpf="$(mktemp)"
+  jq -c . > "$tmpf" || { rm -f "$tmpf"; die "export needs JSON on stdin"; }
+  with_lock /bin/sh -c 'cat "$1" >> "$2"' sh "$tmpf" "$box/export-$month.jsonl"
+  rm -f "$tmpf"
+}
+
+cmd_status() {
+  local f n oldest
+  printf 'role=%s\n' "$(role)"
+  if [[ -s "$box/url" ]]; then printf 'url=%s\n' "$(cat "$box/url")"; else echo "url=unset"; fi
+  f="$(outbox)"; n=0; oldest=-
+  if [[ -s "$f" ]]; then
+    n="$(wc -l < "$f" | tr -d ' ')"
+    oldest="$(head -n 1 "$f" | jq -r '.ts // "-"' 2>/dev/null || echo -)"
+  fi
+  printf 'outbox=%s\noutbox_oldest=%s\n' "$n" "$oldest"
+  if [[ -s "$(sending)" ]]; then printf 'sending=%s\n' "$(wc -l < "$(sending)" | tr -d ' ')"; else echo "sending=0"; fi
+  if [[ -s "$(logfile)" ]]; then
+    printf 'log_last=%s\n' "$(tail -n 1 "$(logfile)" | jq -r '.ts // "-"' 2>/dev/null || echo -)"
+  else
+    echo "log_last=-"
+  fi
+  printf 'prune_days=%s\n' "$AF_INBOX_PRUNE_DAYS"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  role) role ;;
+  url) cmd_url "$@" ;;
+  new-id) cmd_new_id ;;
+  add) cmd_add "$@" ;;
+  move) cmd_move "$@" ;;
+  note|answer) cmd_text "$cmd" "$@" ;;
+  take) cmd_take ;;
+  ack) cmd_ack ;;
+  log) cmd_log "$@" ;;
+  export) cmd_export ;;
+  status) cmd_status ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

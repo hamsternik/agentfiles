@@ -1,0 +1,17 @@
+<title>Claude Inbox</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* No UI on purpose: this page only holds the Inbox db. Sessions manage it (skill triage-inbox). */
+:root { --bg: #f5f6f8; --fg: #1b2230; --muted: #5d6779; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #12151b; --fg: #e6e9ef; --muted: #98a2b3; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #12151b; --fg: #e6e9ef; --muted: #98a2b3; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px; }
+main { max-width: 60ch; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 8px; }
+p { color: var(--muted); margin: 0; }
+</style>
+<main>
+  <h1>Claude Inbox</h1>
+  <p>This page holds the Inbox data. It has no interface. Manage the Inbox from a watchdog session with the triage-inbox skill.</p>
+</main>

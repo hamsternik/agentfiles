@@ -140,3 +140,28 @@ render_template() {
     printf '%s\n' "$content" > "$dst"
   fi
 }
+
+# Link <src> to <target> unless something else already lives at <target>.
+link_ours() {  # link_ours <src> <target>
+  local src="$1" target="$2"
+  if [[ ! -e "$target" && ! -L "$target" ]]; then
+    run ln -s "$src" "$target"
+    [[ "$AF_DRY_RUN" == 1 ]] || ok "Linked $target -> $src"
+  elif [[ "$(readlink "$target" 2>/dev/null)" == "$src" ]]; then
+    ok "$target already linked"
+  else
+    warn "$target exists and is not ours; leaving it."
+  fi
+}
+
+# Claude Inbox on this machine: the triage-inbox skill, ~/.claude/inbox and an
+# `af` link there, so the skill finds `af inbox` without PATH (docs/inbox.md).
+install_inbox() {
+  local skills="$HOME/.claude/skills" box="$HOME/.claude/inbox"
+  run mkdir -p "$skills" "$box"
+  link_ours "$AF_ROOT/claude/skills/triage-inbox" "$skills/triage-inbox"
+  link_ours "$AF_ROOT/bin/af" "$box/af"
+  if [[ ! -s "$box/url" ]]; then
+    manual "Claude Inbox: set the page address on this machine: ~/.claude/inbox/af inbox url <https://claude.ai/artifact/...> (docs/inbox.md)."
+  fi
+}
