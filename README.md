@@ -46,6 +46,8 @@ apple/                  simulator runtimes pinned by build
 services/us-gateway/    gluetun compose files (VPN egress + HTTP proxy)
 services/launchd/       health + cleanup agent templates
 claude/CLAUDE.host.md   global rules for agents running on the host
+claude/skills/          Claude skills the inbox step links into ~/.claude/skills (triage-inbox)
+claude/inbox/           the page that holds the Claude Inbox db (no interface)
 schemas/                example .agent/project.yaml for project repos
 local.example/          templates for local/ (gitignored, machine-specific)
 hooks/pre-commit        blocks local/, secrets, denylisted terms
@@ -71,6 +73,7 @@ docs/                   PLAN, runbook, security; docs/research/ = dated evidence
 | `af attach [--screen]` | from the master: tmux on the host, or Screen Sharing |
 | `af doctor` | check this machine against its role |
 | `af versions [--record]` | pinned and recorded versions vs installed; fails on drift |
+| `af inbox add\|move\|take\|ack\|status` | Claude Inbox, local side: outbox, local log, page URL (docs/inbox.md) |
 
 ## Tests
 
