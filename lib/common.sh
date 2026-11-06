@@ -165,3 +165,10 @@ install_inbox() {
     manual "Claude Inbox: set the page address on this machine: ~/.claude/inbox/af inbox url <https://claude.ai/artifact/...> (docs/inbox.md)."
   fi
 }
+
+# Session sync between seats: the sync-sessions-to-seat skill (`af sessions`).
+install_session_sync() {
+  local skills="$HOME/.claude/skills"
+  run mkdir -p "$skills"
+  link_ours "$AF_ROOT/claude/skills/sync-sessions-to-seat" "$skills/sync-sessions-to-seat"
+}

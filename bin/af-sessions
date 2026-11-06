@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# Claude desktop sessions: list org folders, copy sessions to another seat's org, undo
+# shellcheck disable=SC2016  # jq programs use $vars on purpose
+set -euo pipefail
+AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export AF_ROOT
+# shellcheck source=../lib/common.sh
+. "$AF_ROOT/lib/common.sh"
+af_load_config
+
+root="${AF_SESSIONS_DIR:-$HOME/Library/Application Support/Claude/claude-code-sessions}"
+projects="${AF_CLAUDE_PROJECTS:-$HOME/.claude/projects}"
+runs="${AF_SESSIONS_RUNS:-$HOME/.claude/session-sync}"
+JQ="${AF_JQ:-/usr/bin/jq}"
+command -v "$JQ" >/dev/null || JQ=jq
+
+usage() {
+  cat <<'EOF'
+usage: af sessions <command> [args]
+
+  orgs                          list the org folders: org, sessions, newest activity (UTC);
+                                "active" = the org with the newest activity
+  sync [--to ORG] [--from ORG] [--days N] [--project DIR]... [--include-archived] [--apply]
+                                copy session metadata into the org ORG (default: active).
+                                --from: default every other org of the same account.
+                                --days: default 10. --project: default every project.
+                                Without --apply: dry run, writes nothing.
+  undo <run-dir>                take back one --apply run (files from its manifest)
+
+ORG = a unique prefix of the org folder name (a UUID), or ACCOUNT/ORG prefixes
+      when one org ID is under more than one account.
+Per session: the newer lastActivityAt wins; the target gets its own connector list
+(remoteMcpServersConfig of its newest session) and loses the scheduled-task fields.
+Transcripts (~/.claude/projects) are shared by every org and are never touched.
+The Claude app reads the folders only at start: restart it after --apply or undo.
+EOF
+}
+
+now_ms() { printf '%s\n' "${AF_SESSIONS_NOW:-$(($(date +%s) * 1000))}"; }
+
+newest() {  # newest <org-dir>: max lastActivityAt of its sessions (0 if none)
+  local d="$1" f any=0
+  for f in "$d"/local_*.json; do [[ -e "$f" ]] && { any=1; break; }; done
+  if (( any == 0 )); then echo 0; return; fi
+  "$JQ" -n '[inputs | .lastActivityAt // .createdAt // 0] | max' "$d"/local_*.json
+}
+
+org_dirs() {  # every <account>/<org> folder
+  local d
+  for d in "$root"/*/*/; do [[ -d "$d" ]] && printf '%s\n' "${d%/}"; done
+}
+
+active_org() {
+  local d best="" bestn=-1 n
+  while IFS= read -r d; do
+    n="$(newest "$d")"
+    if (( n > bestn )); then best="$d"; bestn="$n"; fi
+  done < <(org_dirs)
+  [[ -n "$best" ]] || die "no org folder under $root"
+  printf '%s\n' "$best"
+}
+
+resolve_org() {  # resolve_org <prefix>
+  local p="$1" d hits="" n=0
+  local acc="" o="$p" da
+  if [[ "$p" == */* ]]; then acc="${p%%/*}"; o="${p#*/}"; fi
+  while IFS= read -r d; do
+    da="$(basename "$(dirname "$d")")"
+    case "$da" in "$acc"*) ;; *) continue ;; esac
+    case "${d##*/}" in "$o"*) hits="$d"; n=$((n + 1)) ;; esac
+  done < <(org_dirs)
+  (( n > 0 )) || die "no org folder matches '$p' (see: af sessions orgs)"
+  (( n == 1 )) || die "org prefix '$p' matches $n folders; give more characters"
+  printf '%s\n' "$hits"
+}
+
+cmd_orgs() {
+  local act d n cnt when
+  act="$(active_org)"
+  while IFS= read -r d; do
+    n="$(newest "$d")"
+    cnt="$(find "$d" -maxdepth 1 -name 'local_*.json' | wc -l | tr -d ' ')"
+    when="$("$JQ" -rn --argjson n "$n" 'if $n == 0 then "-" else ($n / 1000 | floor | strftime("%Y-%m-%d %H:%M")) end')"
+    printf '%s/%s  %4s sessions  newest %s%s\n' "$(basename "$(dirname "$d")")" "${d##*/}" "$cnt" "$when" \
+      "$([[ "$d" == "$act" ]] && echo '  active')"
+  done < <(org_dirs)
+}
+
+has_transcript() {  # has_transcript <cliSessionId>
+  local f
+  [[ -n "$1" ]] || return 1
+  for f in "$projects"/*/"$1".jsonl; do [[ -e "$f" ]] && return 0; done
+  return 1
+}
+
+cmd_sync() {
+  local to="" from="" days=10 apply=0 archived=0 projs="[]"
+  while (( $# )); do
+    case "$1" in
+      --to) to="$2"; shift 2 ;;
+      --from) from="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      --project) projs="$("$JQ" -c --arg p "${2%/}" '. + [$p]' <<<"$projs")"; shift 2 ;;
+      --include-archived) archived=1; shift ;;
+      --apply) apply=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "sync: unknown argument '$1'" ;;
+    esac
+  done
+  [[ "$days" =~ ^[0-9]+$ ]] || die "--days needs a number"
+
+  local dst srcs="" d
+  if [[ -n "$to" ]]; then dst="$(resolve_org "$to")"; else dst="$(active_org)"; fi
+  if [[ -n "$from" ]]; then
+    srcs="$(resolve_org "$from")"
+  else
+    for d in "$(dirname "$dst")"/*/; do d="${d%/}"; [[ "$d" == "$dst" ]] || srcs+="$d"$'\n'; done
+  fi
+  [[ -n "$srcs" ]] || die "no source org for $dst"
+
+  # connector list of the target org: from its newest session
+  local tmpl="" best=-1 f n
+  for f in "$dst"/local_*.json; do
+    [[ -e "$f" ]] || continue
+    n="$("$JQ" 'if (.remoteMcpServersConfig | type) == "array" then (.lastActivityAt // .createdAt // 0) else -1 end' "$f")"
+    if (( n > best )); then best="$n"; tmpl="$f"; fi
+  done
+  if [[ -z "$tmpl" ]] || (( best < 0 )); then
+    die "the target org has no session to copy the connector list from: open one session in the app on that seat first ($dst)"
+  fi
+
+  local cut=$(( $(now_ms) - days * 86400000 ))
+  echo "target: $(basename "$(dirname "$dst")")/${dst##*/}   connectors from: $(basename "$tmpl")"
+  echo "since:  $("$JQ" -rn --argjson c "$cut" '$c / 1000 | floor | strftime("%Y-%m-%d %H:%M UTC")')   projects: $("$JQ" -r 'if length == 0 then "all" else join(", ") end' <<<"$projs")"
+
+  local plan; plan="$(mktemp)"
+  local s
+  while IFS= read -r s; do
+    [[ -n "$s" ]] || continue
+    for f in "$s"/local_*.json; do [[ -e "$f" ]] || continue
+      "$JQ" -r --argjson cut "$cut" --argjson projs "$projs" --argjson arch "$archived" '
+        (.originCwd // .cwd // "") as $cwd
+        | (.lastActivityAt // .createdAt // 0) as $la
+        | select($la >= $cut)
+        | select($arch == 1 or (.isArchived != true))
+        | select(($projs | length) == 0 or any($projs[] as $p | ($cwd == $p or ($cwd | startswith($p + "/"))); .))
+        | [input_filename, (.cliSessionId // ""), $la, ($la / 1000 | floor | strftime("%m-%d %H:%M")),
+           $cwd, (.title // "")] | @tsv' "$f"
+    done
+  done <<<"$srcs" | sort -t$'\t' -k3,3nr > "$plan"
+
+  local nadd=0 nrep=0 nskip=0 run="" file id cli la when cwd title tf tla act reason
+  if (( apply )); then
+    run="$runs/$(date -u +%Y%m%dT%H%M%SZ)-$(printf '%.8s' "${dst##*/}")"
+  fi
+  while IFS=$'\t' read -r file cli la when cwd title; do
+    id="${file##*/local_}"; id="${id%.json}"; id="$(printf '%.8s' "$id")"
+    tf="$dst/${file##*/}"; act=add; reason=""
+    if ! has_transcript "$cli"; then act=skip; reason="no-transcript"
+    elif [[ -e "$tf" ]]; then
+      tla="$("$JQ" '.lastActivityAt // .createdAt // 0' "$tf")"
+      if (( tla > la )); then act=skip; reason="target-newer"
+      elif (( tla == la )); then act=skip; reason=same
+      else act=replace; fi
+    fi
+    printf '%-8s %s  %-13s %s  %s  %s\n' "$act" "$id" "$reason" "$when" "${cwd##*/}" "$title"
+    case "$act" in
+      skip) nskip=$((nskip + 1)); continue ;;
+      add) nadd=$((nadd + 1)) ;;
+      replace) nrep=$((nrep + 1)) ;;
+    esac
+    (( apply )) || continue
+    if [[ ! -d "$run" ]]; then
+      mkdir -p "$run/backup"; printf '%s\n' "$dst" > "$run/target"; : > "$run/manifest.tsv"
+    fi
+    [[ "$act" == replace ]] && cp -p "$tf" "$run/backup/"
+    "$JQ" --slurpfile t "$tmpl" '.remoteMcpServersConfig = $t[0].remoteMcpServersConfig
+      | del(.scheduledTaskId, .scheduledRunContinued)' "$file" > "$tf.af-tmp"
+    mv "$tf.af-tmp" "$tf"
+    printf '%s\t%s\t%s\t%s\n' "$act" "${file##*/}" "$cli" "$title" >> "$run/manifest.tsv"
+  done < "$plan"
+  rm -f "$plan"
+
+  echo
+  if (( apply )); then
+    echo "done: $nadd added, $nrep replaced, $nskip skipped."
+    if [[ -n "$run" && -d "$run" ]]; then
+      echo "manifest + backup: $run   (undo: af sessions undo \"$run\")"
+      echo "restart the Claude app to see the sessions; do not keep working on the same session on the other seat."
+    fi
+  else
+    echo "dry run: $nadd add, $nrep replace, $nskip skip. Nothing written. Add --apply to copy."
+  fi
+}
+
+cmd_undo() {
+  local run="${1:-}" act file cli title dst
+  [[ -n "$run" && -f "$run/manifest.tsv" && -f "$run/target" ]] || die "undo: give a run folder with manifest.tsv"
+  [[ ! -e "$run/undone" ]] || die "undo: this run is already undone ($run/undone)"
+  dst="$(cat "$run/target")"
+  mkdir -p "$run/removed"
+  while IFS=$'\t' read -r act file cli title; do
+    case "$act" in
+      add) [[ -e "$dst/$file" ]] && mv "$dst/$file" "$run/removed/"; echo "removed  $file  $title" ;;
+      replace) cp -p "$run/backup/$file" "$dst/$file"; echo "restored $file  $title" ;;
+    esac
+  done < "$run/manifest.tsv"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$run/undone"
+  echo "restart the Claude app."
+}
+
+case "${1:-help}" in
+  orgs) shift; cmd_orgs ;;
+  sync) shift; cmd_sync "$@" ;;
+  undo) shift; cmd_undo "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac
