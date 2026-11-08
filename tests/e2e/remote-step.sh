@@ -4,9 +4,10 @@
 #   tests/e2e/remote-step.sh <user@host> <step> [VAR=value ...]
 #
 # Copies the working tree (tracked + untracked, not ignored; no .git, no local/)
-# to ~/agentfiles-dev on the target, never touching its own ~/agentfiles clone.
-# local/machine.env there = the target's ~/agentfiles/local/machine.env if it
-# has one, else local.example/machine.env, plus the VAR=value overrides.
+# to ~/Developer/_hamsternik/agentfiles-dev on the target, never touching its own
+# clone ~/Developer/_hamsternik/agentfiles (nothing goes directly into ~).
+# local/machine.env there = the target clone's local/machine.env if it has one,
+# else local.example/machine.env, plus the VAR=value overrides.
 # Then runs `./bootstrap.sh $ROLE --only <step>` (ROLE=slave by default;
 # DRY=1 adds --dry-run). One SSH login is shared; sudo asks on the target.
 set -euo pipefail
@@ -16,6 +17,8 @@ shift 2
 [[ "$step" =~ ^[0-9]+$ ]] || { echo "step must be a number prefix, e.g. 15" >&2; exit 2; }
 role="${ROLE:-slave}"
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+base="${AF_REMOTE_BASE:-Developer/_hamsternik}"      # relative to the target's home
+clone="$base/agentfiles"; dev="$base/agentfiles-dev"
 
 ssh_opts=(-o ControlMaster=auto -o ControlPath=/tmp/af-rs-%C -o ControlPersist=5m -o ConnectTimeout=10)
 trap 'ssh "${ssh_opts[@]}" -O exit "$target" 2>/dev/null || true; rm -rf "${stage:-}"' EXIT
@@ -27,7 +30,8 @@ mkdir -p "$stage/local"
 
 echo "==> $target: reading its local/machine.env (type the password if asked)"
 env_file="$stage/local/machine.env"
-ssh "${ssh_opts[@]}" "$target" 'cat ~/agentfiles/local/machine.env 2>/dev/null' > "$env_file" || true
+# shellcheck disable=SC2029  # the remote path is built here on purpose
+ssh "${ssh_opts[@]}" "$target" "cat ~/$clone/local/machine.env 2>/dev/null" > "$env_file" || true
 if [[ -s "$env_file" ]]; then echo "    using the target's own machine.env"
 else cp "$repo/local.example/machine.env" "$env_file"; echo "    no machine.env there; using local.example"; fi
 
@@ -38,9 +42,10 @@ for kv in "$@"; do
   echo "    override: $kv"
 done
 
-echo "==> copying the working tree to $target:~/agentfiles-dev"
+echo "==> copying the working tree to $target:~/$dev"
+# shellcheck disable=SC2029  # the remote path is built here on purpose
 COPYFILE_DISABLE=1 tar -C "$stage" -cf - . | ssh "${ssh_opts[@]}" "$target" \
-  'rm -rf ~/agentfiles-dev && mkdir -p ~/agentfiles-dev && tar -xf - -C ~/agentfiles-dev'
+  "rm -rf ~/$dev && mkdir -p ~/$dev && tar -xf - -C ~/$dev"
 
 echo "==> running step $step (role $role${DRY:+, dry-run}) on $target"
-ssh -t "${ssh_opts[@]}" "$target" "cd ~/agentfiles-dev && ./bootstrap.sh $role --only $step${DRY:+ --dry-run}"
+ssh -t "${ssh_opts[@]}" "$target" "cd ~/$dev && ./bootstrap.sh $role --only $step${DRY:+ --dry-run}"

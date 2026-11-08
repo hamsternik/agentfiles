@@ -34,25 +34,27 @@ check() {  # check <description> <command...>
   local what="$1"; shift
   if "$@"; then echo "ok   $what"; else echo "FAIL $what"; sed 's/^/     /' "$tmp/out"; fails=$((fails + 1)); fi
 }
-env_has() { grep -qx "$1" "$tmp/home/agentfiles-dev/local/machine.env"; }
+home_root_clean() { [[ "$(ls -A "$tmp/home")" == Developer ]]; }
+env_has() { grep -qx "$1" "$tmp/home/Developer/_hamsternik/agentfiles-dev/local/machine.env"; }
 
 setup; remote_step agent@box 15 AF_LID_CLOSED=1
-check "copies the working tree"                [ -f "$tmp/home/agentfiles-dev/roles/slave/steps/15-power.sh" ]
-check "leaves .git behind"                     [ ! -e "$tmp/home/agentfiles-dev/.git" ]
+check "copies the working tree"                [ -f "$tmp/home/Developer/_hamsternik/agentfiles-dev/roles/slave/steps/15-power.sh" ]
+check "leaves .git behind"                     [ ! -e "$tmp/home/Developer/_hamsternik/agentfiles-dev/.git" ]
 check "override applied (example env)"         env_has "AF_LID_CLOSED=1"
 check "runs only the chosen step, dry-run"     grep -q 'step 15-power.sh' "$tmp/out"
 check "dry-run flag passed"                    grep -q '\[dry-run\]' "$tmp/out"
 check "finishes"                               bash -c "! grep -q 'remote-step exited' '$tmp/out'"
+check "nothing new directly in the home folder"  home_root_clean
 rm -rf "$tmp"
 
 setup
-mkdir -p "$tmp/home/agentfiles/local"
-printf 'AF_HOSTNAME="from-host"\nAF_LID_CLOSED=0\n' > "$tmp/home/agentfiles/local/machine.env"
+mkdir -p "$tmp/home/Developer/_hamsternik/agentfiles/local"
+printf 'AF_HOSTNAME="from-host"\nAF_LID_CLOSED=0\n' > "$tmp/home/Developer/_hamsternik/agentfiles/local/machine.env"
 remote_step agent@box 15 AF_LID_CLOSED=1 AF_NEW=x
 check "uses the host's own local/machine.env"  env_has 'AF_HOSTNAME="from-host"'
 check "override replaces an existing value"    env_has "AF_LID_CLOSED=1"
 check "override appends a new value"           env_has "AF_NEW=x"
-check "host's own clone is untouched"          grep -qx "AF_LID_CLOSED=0" "$tmp/home/agentfiles/local/machine.env"
+check "host's own clone is untouched"          grep -qx "AF_LID_CLOSED=0" "$tmp/home/Developer/_hamsternik/agentfiles/local/machine.env"
 rm -rf "$tmp"
 
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }
