@@ -5,11 +5,12 @@
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fails=0
-tmp="$(mktemp -d)"
+tmp="$(cd "$(mktemp -d)" && pwd -P)"   # real path: git reports /private/var, not /var
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/home" "$tmp/local" "$tmp/af"
 cat > "$tmp/local/machine.env" <<EOF
-AF_WORKTREES_DIR="$tmp/worktrees"
+AF_PERSONAL_DIR="$tmp/personal"
+AF_WORK_DIR="$tmp/work"
 AF_US_GATEWAY_ENABLED=0
 AF_NOTIFY_CMD="$tmp/notify.sh"
 EOF
@@ -54,13 +55,19 @@ check "slot: disk block allows browser"  [ "$(rc af slot browser -- true)" = 0 ]
 rm -f "$tmp/af/state/disk-blocked"
 
 # --- af worktree -------------------------------------------------------------
-git -C "$tmp" init -q repo && git -C "$tmp/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-check "worktree: first created"          [ -d "$(af worktree new "$tmp/repo" feat/a 2>/dev/null)" ]
-check "worktree: second created"         [ -d "$(af worktree new "$tmp/repo" feat/b 2>/dev/null)" ]
-check "worktree: third refused (max 2)"  [ "$(rc af worktree new "$tmp/repo" feat/c)" = 1 ]
-check "worktree: .derived/ excluded"     grep -qx '.derived/' "$tmp/repo/.git/info/exclude"
-af worktree rm "$tmp/worktrees/repo/feat-a" >/dev/null 2>&1
-check "worktree: rm frees a place"       [ "$(rc af worktree new "$tmp/repo" feat/c)" = 0 ]
+# Worktrees go next to their repo, in <group folder>/.worktrees/<repo>/<branch>.
+mkrepo() { mkdir -p "$1" && git -C "$1" init -q && git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; }
+mkrepo "$tmp/personal/repo"; mkrepo "$tmp/work/wrepo"
+check "worktree: personal one in _hamsternik-style group dir" \
+                                         [ "$(af worktree new "$tmp/personal/repo" feat/a 2>/dev/null)" = "$tmp/personal/.worktrees/repo/feat-a" ]
+check "worktree: work one in the work group dir" \
+                                         [ "$(af worktree new "$tmp/work/wrepo" feat/b 2>/dev/null)" = "$tmp/work/.worktrees/wrepo/feat-b" ]
+check "worktree: cap counts both groups (max 2)" [ "$(rc af worktree new "$tmp/personal/repo" feat/c)" = 1 ]
+check "worktree: list shows both"        [ "$(af worktree list 2>/dev/null | wc -l | tr -d ' ')" = 2 ]
+check "worktree: .derived/ excluded"     grep -qx '.derived/' "$tmp/personal/repo/.git/info/exclude"
+af worktree rm "$tmp/personal/.worktrees/repo/feat-a" >/dev/null 2>&1 || true
+check "worktree: rm frees a place"       [ "$(rc af worktree new "$tmp/personal/repo" feat/c)" = 0 ]
+check "worktree: nothing in the home folder" [ -z "$(ls -A "$tmp/home")" ]
 
 # --- af health ---------------------------------------------------------------
 printf 'AF_DISK_WARN_PCT=0\nAF_DISK_BLOCK_PCT=0\n' >> "$tmp/local/limits.env"

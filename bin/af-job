@@ -11,7 +11,7 @@ af_load_config
 # logs output, and notifies on failure. launchd calls this; you can too.
 have yq || die "yq required"
 name="${1:?project}"; job="${2:?job}"
-dir="$AF_DEVELOPER_DIR/$name"
+dir="$(project_dir "$name")"
 m="$dir/.agent/project.yaml"
 [[ -f "$m" ]] || die "No manifest at $m"
 

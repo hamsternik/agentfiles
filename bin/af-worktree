@@ -10,16 +10,19 @@ af_load_config
 #   af worktree new <repo-dir> <branch> [base]   -> prints the new worktree path
 #   af worktree list
 #   af worktree rm <worktree-path>               -> also deletes its build caches
-root="$AF_WORKTREES_DIR"
-
-count() { find "$root" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' '; }
+# A worktree goes next to its repo: <group folder>/.worktrees/<repo>/<branch>
+# (~/Developer/_hamsternik/.worktrees, ~/Developer/_work/.worktrees). The cap counts both.
+roots() { local r; for r in "${AF_PERSONAL_DIR:-}" "${AF_WORK_DIR:-}"; do [[ -n "$r" ]] && echo "$r/.worktrees"; done | sort -u; }
+all() { local r; while read -r r; do find "$r" -mindepth 2 -maxdepth 2 -type d 2>/dev/null; done < <(roots); }
+count() { all | wc -l | tr -d ' '; }
 
 case "${1:-}" in
   new)
     repo="${2:?repo dir}"; branch="${3:?branch}"; base="${4:-HEAD}"
     [[ -f "$AF_STATE/disk-blocked" ]] && die "Disk blocked; run 'af cleanup --apply' first."
     (( $(count) < AF_MAX_WORKTREES )) || die "Already $(count) worktrees (max $AF_MAX_WORKTREES). Remove one first."
-    name="$(basename "$(git -C "$repo" rev-parse --show-toplevel)")"
+    top="$(git -C "$repo" rev-parse --show-toplevel)"
+    name="$(basename "$top")"; root="$(dirname "$top")/.worktrees"
     path="$root/$name/${branch//\//-}"
     mkdir -p "$root/$name"
     git -C "$repo" worktree add -b "$branch" "$path" "$base" >&2
@@ -30,7 +33,7 @@ case "${1:-}" in
     echo "$path"
     ;;
   list)
-    find "$root" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort
+    all | sort
     echo "($(count)/$AF_MAX_WORKTREES)" >&2
     ;;
   rm)

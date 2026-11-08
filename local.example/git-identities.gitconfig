@@ -1,7 +1,7 @@
 # Example: keep work and personal git identities separate by directory.
 # Include from ~/.gitconfig (or your dotfiles git config):
 #
-#   [includeIf "gitdir:~/Developer/work/"]
+#   [includeIf "gitdir:~/Developer/_work/"]
 #       path = ~/.gitconfig-work
 #
 # ~/.gitconfig-work:

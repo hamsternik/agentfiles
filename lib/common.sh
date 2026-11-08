@@ -125,6 +125,21 @@ adopt_casks() {  # adopt_casks <Brewfile...>
   done
 }
 
+# Project folders by group (local/projects.yaml `group:`): work -> AF_WORK_DIR
+# (~/Developer/_work), personal or none -> AF_PERSONAL_DIR (~/Developer/_hamsternik).
+group_dir() {  # group_dir <group>
+  case "${1:-personal}" in
+    personal) echo "${AF_PERSONAL_DIR:?set AF_PERSONAL_DIR in local/machine.env}" ;;
+    work)     echo "${AF_WORK_DIR:?set AF_WORK_DIR in local/machine.env}" ;;
+    *) die "Unknown group '$1' in local/projects.yaml (use personal or work)" ;;
+  esac
+}
+project_dir() {  # project_dir <name>; needs yq and local/projects.yaml
+  local g
+  g="$(yq -r ".projects[] | select(.name == \"$1\") | .group // \"personal\"" "$AF_LOCAL/projects.yaml" 2>/dev/null | head -1 || true)"
+  echo "$(group_dir "${g:-personal}")/$1"
+}
+
 # Render a template by replacing {{VAR}} with the value of $VAR.
 render_template() {
   local src="$1" dst="$2" content var

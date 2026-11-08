@@ -13,21 +13,21 @@ have yq || die "yq required (brew install yq)"
 list_file="$AF_LOCAL/projects.yaml"
 [[ -f "$list_file" ]] || die "No $list_file (copy local.example/projects.yaml)"
 
-enabled() { yq -r '.projects[] | select(.enabled == true) | .name + " " + .repo' "$list_file"; }
-proj_dir() { echo "$AF_DEVELOPER_DIR/$1"; }
+enabled() { yq -r '.projects[] | select(.enabled == true) | .name + " " + .repo + " " + (.group // "personal")' "$list_file"; }
+proj_dir() { echo "$(group_dir "$2")/$1"; }    # proj_dir <name> <group>
 
 case "${1:-list}" in
   list)
-    while read -r name repo; do
-      dir="$(proj_dir "$name")"
+    while read -r name repo group; do
+      dir="$(proj_dir "$name" "$group")"
       state="missing"; [[ -d "$dir/.git" ]] && state="cloned"
       manifest="-"; [[ -f "$dir/.agent/project.yaml" ]] && manifest="manifest"
       printf '%-28s %-8s %-9s %s\n' "$name" "$state" "$manifest" "$repo"
     done < <(enabled)
     ;;
   sync)
-    while read -r name repo; do
-      dir="$(proj_dir "$name")"
+    while read -r name repo group; do
+      dir="$(proj_dir "$name" "$group")"
       if [[ -d "$dir/.git" ]]; then run git -C "$dir" fetch --prune --quiet && ok "$name fetched"
       else run git clone "$repo" "$dir" && ok "$name cloned"; fi
     done < <(enabled)
@@ -44,8 +44,8 @@ case "${1:-list}" in
       fi
       run rm -f "$p"
     done
-    while read -r name _; do
-      m="$(proj_dir "$name")/.agent/project.yaml"
+    while read -r name _ group; do
+      m="$(proj_dir "$name" "$group")/.agent/project.yaml"
       [[ -f "$m" ]] || continue
       n="$(yq '.jobs | length' "$m")"
       for ((i = 0; i < n; i++)); do

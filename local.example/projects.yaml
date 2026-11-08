@@ -1,12 +1,16 @@
 # Projects this machine runs. Gitignored; never commit real project names here.
 # Each project repo may describe its own needs in .agent/project.yaml
 # (see schemas/project.example.yaml).
+# group: personal -> AF_PERSONAL_DIR (~/Developer/_hamsternik), the default;
+#        work     -> AF_WORK_DIR (~/Developer/_work).
 projects:
   - name: example-app
     repo: git@github.com:you/example-app.git
+    group: personal
     enabled: true
 
   - name: example-crawler
     # A work repo cloned with the work identity via an SSH host alias:
     repo: git@github-work:your-org/example-crawler.git
+    group: work
     enabled: false
