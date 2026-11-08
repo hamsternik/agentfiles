@@ -11,7 +11,7 @@
 3. `xcode-select --install`.
 4. Homebrew (the one-line installer from brew.sh, then the two `shellenv` lines it prints),
    `brew install gh`, `gh auth login` once per account,
-   `gh repo clone <you>/agentfiles ~/agentfiles && cd ~/agentfiles`.
+   `gh repo clone <you>/agentfiles ~/Developer/_hamsternik/agentfiles && cd ~/Developer/_hamsternik/agentfiles`.
 5. `./bootstrap.sh slave --dry-run` (changes nothing; reads `local.example/` until `local/` exists).
 6. `./bootstrap.sh slave` → creates `local/`. Restore or fill `local/machine.env`,
    `local/projects.yaml`, `local/limits.env` (keep a copy of `local/` in your password manager
@@ -32,8 +32,8 @@ Re-running `make slave` at any time applies changes from the repo.
 | One step of this working tree on the host | `make remote-step TARGET=agent@<host> STEP=15 VARS="AF_LID_CLOSED=1"` |
 | Lid-closed end-to-end check | `make e2e-power TARGET=agent@<host>` |
 
-`remote-step` copies the working tree to `~/agentfiles-dev` on the host and never touches its
-own `~/agentfiles`. Type the SSH password within 2 minutes (sshd `LoginGraceTime`).
+`remote-step` copies the working tree to `~/Developer/_hamsternik/agentfiles-dev` on the host and
+never touches its own clone `~/Developer/_hamsternik/agentfiles`. Type the SSH password within 2 minutes (sshd `LoginGraceTime`).
 
 ## Upgrade a tool (versions change only on purpose)
 | What | How |
@@ -56,7 +56,7 @@ Self-updating apps (Chrome, Claude desktop, OrbStack, AlDente, Mullvad) are not 
 | Projects | `af projects list` / `sync` / `install-jobs` |
 | Run a job now | `af job <project> <job>` |
 | Free disk | `af cleanup` (dry run), `af cleanup --apply` |
-| Logs | `~/.agentfiles/logs/` (long logs are trimmed to `AF_LOG_MAX_LINES`) |
+| Logs | `.state/logs/` in the clone (long logs are trimmed to `AF_LOG_MAX_LINES`) |
 
 ## Lid closed and the display
 - Set `AF_LID_CLOSED=1` in `local/machine.env`; step 15 sets `pmset -a disablesleep 1`. It

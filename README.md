@@ -21,7 +21,7 @@ On a fresh Mac:
 
 ```bash
 xcode-select --install
-git clone https://github.com/<you>/agentfiles.git ~/agentfiles && cd ~/agentfiles
+git clone https://github.com/<you>/agentfiles.git ~/Developer/_hamsternik/agentfiles && cd ~/Developer/_hamsternik/agentfiles
 ./bootstrap.sh slave       # first run creates local/ from local.example/ and stops
 $EDITOR local/machine.env  # fill it in
 make slave                 # installs hooks, runs every step; safe to re-run

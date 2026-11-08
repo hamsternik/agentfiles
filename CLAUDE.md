@@ -34,5 +34,10 @@ plus the `af` CLI. See `docs/PLAN.md`.
 - Install source: Homebrew formula or cask first; anything else (curl script, npx, pkg) only
   after the owner agrees, per tool. Exact versions live in `config/versions.env`,
   `apple/runtimes.txt` and the compose digest; `af versions` checks them and the Homebrew snapshot.
+- Layout: nothing of agentfiles goes directly into `~` (also no `~/.x`). The clone is
+  `~/Developer/_hamsternik/agentfiles`, runtime state `AF_HOME` = `<clone>/.state/` (git-ignored),
+  dotfiles `~/Developer/_hamsternik/dotfiles`, projects by `group` in `~/Developer/_work` or
+  `~/Developer/_hamsternik`, worktrees in `<group folder>/.worktrees`. Only tool locations
+  (`.ssh`, `.claude`, `.config`, `.vim`, `Library`) are allowed in `~`; `tests/layout.test.sh` checks it.
 - The slave's login shell is fish: every remote command (`ssh host cmd`) must parse in fish and
   sh (`tests/remote-shell.test.sh`).

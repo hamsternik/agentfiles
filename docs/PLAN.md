@@ -92,7 +92,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 - [x] Install Command Line Tools: `xcode-select --install`.
 - [x] Turn on Remote Login and Screen Sharing (not Remote Management) for the agent user.
 - [x] Lid closed: `make remote-step TARGET=agent@<host> STEP=15 VARS="AF_LID_CLOSED=1"`; `make e2e-power` passed.
-- [ ] Install Homebrew and `gh`; `gh auth login` (both accounts); `gh repo clone <you>/agentfiles ~/agentfiles`.
+- [ ] Install Homebrew and `gh`; `gh auth login` (both accounts); `gh repo clone <you>/agentfiles ~/Developer/_hamsternik/agentfiles`.
 - [ ] `./bootstrap.sh slave --dry-run`, then `./bootstrap.sh slave` (first run creates `local/`).
 - [ ] Fill `local/machine.env`, then `make slave`. Work through the printed manual steps.
 - [ ] `af doctor` passes the base checks (sleep, Remote Login, Tailscale, Homebrew).
@@ -113,7 +113,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 ### Phase 4 — Migrate the first scheduled project
 - [ ] Add `.agent/project.yaml` to the project's own repo (see `schemas/project.example.yaml`).
 - [ ] List it in the host's `local/projects.yaml`; `af projects sync`.
-- [ ] Run once by hand: `af job <project> <job>`; check logs in `~/.agentfiles/logs`.
+- [ ] Run once by hand: `af job <project> <job>`; check logs in `.state/logs/` in the clone.
 - [ ] `af projects install-jobs`; set `AF_NOTIFY_CMD` (Slack webhook, Telegram or ntfy script).
 - [ ] Watch a week of `health.log`; tune `local/limits.env` from real numbers.
 - [ ] Repeat for the remaining long-running projects; remove their schedules from the master.
