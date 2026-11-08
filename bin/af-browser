@@ -7,7 +7,7 @@ export AF_ROOT
 . "$AF_ROOT/lib/common.sh"
 af_load_config
 
-# Profiles live in ~/.agentfiles/chrome-profiles/<name>, never your personal one.
+# Profiles live in $AF_HOME/chrome-profiles/<name> (inside the clone), never your personal one.
 #   af browser us [url]     -> exits via the US gateway (AF_US_PROXY_URL)
 #   af browser agent [url]  -> Claude in Chrome profile, normal network
 require_macos

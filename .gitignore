@@ -5,7 +5,8 @@
 !config/*.env
 !local.example/*.env
 
-# Runtime state
+# Runtime state (AF_HOME: state, logs, Chrome profiles, ssh_config). Never committed.
+/.state/
 /state/
 *.log
 

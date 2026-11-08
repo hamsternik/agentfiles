@@ -6,8 +6,8 @@ root="$(git rev-parse --show-toplevel)"
 fail() { printf '\033[31mpre-commit blocked:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # 1. Machine-local files never enter the repo.
-if git diff --cached --name-only | grep -q '^local/'; then
-  fail "files under local/ are staged. They are machine-local; unstage them."
+if git diff --cached --name-only | grep -qE '^(local|\.state)/'; then
+  fail "files under local/ or .state/ are staged. They are machine-local; unstage them."
 fi
 
 # 2. Secrets.

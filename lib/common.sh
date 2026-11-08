@@ -4,7 +4,7 @@
 
 AF_ROOT="${AF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 AF_LOCAL="${AF_LOCAL:-$AF_ROOT/local}"
-AF_HOME="${AF_HOME:-$HOME/.agentfiles}"          # runtime state, outside the repo
+AF_HOME="${AF_HOME:-$AF_ROOT/.state}"            # runtime state: inside the clone, git-ignored; never in ~
 AF_STATE="$AF_HOME/state"
 AF_LOGS="$AF_HOME/logs"
 AF_DRY_RUN="${AF_DRY_RUN:-0}"

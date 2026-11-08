@@ -22,4 +22,22 @@ ge 27.1 27.0.1 y
 ge 3 2.99.99 y
 ge 08 8 y
 
+# AF_HOME (runtime state) lives inside the clone (.state/, git-ignored), never in ~.
+check() {  # check <description> <command...>
+  local what="$1"; shift
+  if "$@"; then echo "ok   $what"; else echo "FAIL $what"; fails=$((fails + 1)); fi
+}
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/clone/lib" "$tmp/clone/config" "$tmp/home"
+cp "$repo/lib/common.sh" "$tmp/clone/lib/"
+cat > "$tmp/probe.sh" <<'EOF'
+. "$AF_ROOT/lib/common.sh"; af_load_config; echo "$AF_HOME"
+EOF
+af_home="$(env -u AF_HOME -u AF_STATE -u AF_LOGS HOME="$tmp/home" AF_ROOT="$tmp/clone" /bin/bash "$tmp/probe.sh")"
+check "AF_HOME defaults to <clone>/.state"         [ "$af_home" = "$tmp/clone/.state" ]
+state_dirs() { [[ -d "$tmp/clone/.state/state" && -d "$tmp/clone/.state/logs" ]]; }
+check "af_load_config creates state there"         state_dirs
+check "nothing created in the home folder"         [ -z "$(ls -A "$tmp/home")" ]
+check "git ignores .state/"                        git -C "$repo" check-ignore -q .state/state/role
+
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }
