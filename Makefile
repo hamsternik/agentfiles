@@ -29,7 +29,7 @@ hooks: ## Install git hooks (gitleaks + denylist) for this repo
 	git config core.hooksPath hooks
 
 lint: ## shellcheck every script
-	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/* tests/*.sh tests/e2e/*.sh
+	shellcheck -x bootstrap.sh lib/*.sh bin/* roles/*/steps/*.sh hooks/* tests/*.sh tests/e2e/*.sh claude/skills/*/scripts/*.sh
 
 test: ## Run tests under macOS /bin/bash 3.2
 	@for t in tests/*.test.sh; do echo "== $$t"; /bin/bash "$$t" || exit 1; done
