@@ -187,3 +187,10 @@ install_session_sync() {
   run mkdir -p "$skills"
   link_ours "$AF_ROOT/claude/skills/sync-sessions-to-seat" "$skills/sync-sessions-to-seat"
 }
+
+# Project watchdogs: the start-project-watchdog skill (rules, launcher, watchdog.sh).
+install_watchdog_skill() {
+  local skills="$HOME/.claude/skills"
+  run mkdir -p "$skills"
+  link_ours "$AF_ROOT/claude/skills/start-project-watchdog" "$skills/start-project-watchdog"
+}
