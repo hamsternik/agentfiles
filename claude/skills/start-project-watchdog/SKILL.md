@@ -1,13 +1,13 @@
 ---
 name: start-project-watchdog
-description: Make or hand off the ONE pinned watchdog session of a project ("<project> (watchdog)") on the master or the slave Mac. Interviews the owner, writes the short project part docs/prompts/<project>-watchdog.md and docs/decisions/queue.md, and starts the new watchdog with start_session (model named, no Fable). The skill carries the full watchdog rule set (rules.md), so it works in projects whose folder has no watchdog rules. Use when the owner says "start a watchdog for this project", "make the <project> watchdog", "replace the watchdog", "hand off the watchdog", or when a watchdog nears 500 k context tokens.
+description: Make or hand off the ONE pinned watchdog session of a project ("<project> (watchdog)") on the master or the slave Mac. Interviews the owner, writes the short project part .claude/docs/prompts/<project>-watchdog.md and .claude/docs/decisions/queue.md, and starts the new watchdog with start_session (model named, no Fable). The skill carries the full watchdog rule set (rules.md), so it works in projects whose folder has no watchdog rules. Use when the owner says "start a watchdog for this project", "make the <project> watchdog", "replace the watchdog", "hand off the watchdog", or when a watchdog nears 500 k context tokens.
 ---
 
 # Start a project watchdog
 
 A project has ONE pinned watchdog session, "<project> (watchdog)": the owner's inbox and router. Every other session of the
 project is a working session and reports only to it. The rules of the watchdog are in `rules.md` (this folder); the project
-facts are in `docs/prompts/<project>-watchdog.md` in the project.
+facts are in `.claude/docs/prompts/<project>-watchdog.md` in the project.
 
 Set-up: `W=~/.claude/skills/start-project-watchdog/scripts/watchdog.sh` (agentfiles links this folder on the master and the slave).
 
@@ -26,10 +26,10 @@ Run in a session whose folder is the project, on the machine where the watchdog 
    - owned areas: what the watchdog keeps, and what goes to which session;
    - the sessions table: live sessions, machine, what each owns;
    - status sources: files, commands, skills, the other machine;
-   - the decision queue path (default `docs/decisions/queue.md`);
+   - the decision queue path (default `.claude/docs/decisions/queue.md`);
    - a report or artifact, if any;
    - the model of the watchdog (default Opus; Fable only on the owner's word).
-4. **Write the project part.** `$W init <project dir>` makes `docs/prompts/<project>-watchdog.md` and `docs/decisions/queue.md`
+4. **Write the project part.** `$W init <project dir>` makes `.claude/docs/prompts/<project>-watchdog.md` and `.claude/docs/decisions/queue.md`
    from the templates (it never overwrites; an existing file is `kept`, then edit it). Fill each section with Edit: version line,
    start (machine, model), owned areas, sessions, status sources, machines, report, open items, facts only the old watchdog knew.
    `$W public <project dir>`: if `public`, write session titles and ids only: no employer, client or work names, no hostnames,

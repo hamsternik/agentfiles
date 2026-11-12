@@ -3,7 +3,7 @@
 `{{PROJECT}}-watchdog` v1.0 · {{DATE}} · owner: the owner · watchdog id: (step 2 writes it) · written by: (the session that ran the launcher) · instructions in ASD-STE100 Simplified Technical English
 
 **Start.** Open a new Claude Code session in this project on the <master|slave> with the model **<Opus|Sonnet>** (not Fable). Write:
-`Run docs/prompts/{{PROJECT}}-watchdog.md.` Name the session "{{PROJECT}} (watchdog)" and pin it.
+`Run .claude/docs/prompts/{{PROJECT}}-watchdog.md.` Name the session "{{PROJECT}} (watchdog)" and pin it.
 
 **Rules.** The full watchdog rule set is in the skill `start-project-watchdog`: read `~/.claude/skills/start-project-watchdog/rules.md`
 first. This file holds only the project part. Project rules: the project `CLAUDE.md` and the memory index.
@@ -48,7 +48,7 @@ You are the one watchdog of {{PROJECT}}: the owner's inbox and router (rules.md,
 
 ## Decisions
 
-Queue file: `docs/decisions/queue.md` (next id: `~/.claude/skills/start-project-watchdog/scripts/watchdog.sh next-id docs/decisions/queue.md`).
+Queue file: `.claude/docs/decisions/queue.md` (next id: `~/.claude/skills/start-project-watchdog/scripts/watchdog.sh next-id .claude/docs/decisions/queue.md`).
 Inbox: skill `triage-inbox`, `project: "{{PROJECT}}"`, `type: decision`, `links.ref` = the D-id.
 
 ## Machines

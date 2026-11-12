@@ -11,13 +11,13 @@ session on the slave by a hand-off.
 
 The skill carries the full watchdog rule set itself. Reason: the org rules file of the work folder does not apply to
 projects outside it (dotfiles, agentfiles). A project keeps only a short project part:
-`docs/prompts/<project>-watchdog.md`.
+`.claude/docs/prompts/<project>-watchdog.md`.
 
 ## Decisions
 
 Taken before the interview (task brief, 2026-11-12):
 - Form: a skill at `claude/skills/start-project-watchdog/`, installed by agentfiles on the master and the slave, callable in any project.
-- The skill carries the full rule set; it writes a short project part `docs/prompts/<project>-watchdog.md`.
+- The skill carries the full rule set; it writes a short project part `.claude/docs/prompts/<project>-watchdog.md`.
 - The title is "<project> (watchdog)". The first use replaces the current dotfiles watchdog by a hand-off; the owner archives the old session (archive, never delete).
 
 Interview, 2026-11-12:
@@ -25,9 +25,10 @@ Interview, 2026-11-12:
 | # | Question | Answer |
 |---|---|---|
 | 1 | Machine of the new dotfiles watchdog | **Master.** The old one runs on the slave. The master reads slave facts over SSH. |
-| 2 | Where a watchdog records an open decision | **Both:** a D-row in the project file `docs/decisions/queue.md` and one Claude Inbox item (`type: decision`, `links.ref` = the D-id) through the `triage-inbox` skill. |
+| 2 | Where a watchdog records an open decision | **Both:** a D-row in the project file `.claude/docs/decisions/queue.md` and one Claude Inbox item (`type: decision`, `links.ref` = the D-id) through the `triage-inbox` skill. |
 | 3 | How the skill makes the session | **Launcher:** run the skill in any session of the project; it interviews, writes the project part, and starts a new session with `start_session`. With no `start_session`, it gives the owner the start line. |
 | 4 | Extra org rule sections in the skill | **All four:** Bulk AI jobs, Deleting files, HTML reports, Obsolete documents. |
+| 5 | Place of the project files (2026-11-12, after the first use) | **`.claude/docs/`** in the project, not the root `docs/`: the files are specific to one AI agent and to the Claude desktop app. |
 
 Facts found (2026-11-12):
 - The old "dotfiles/ (watchdog)" is a slave session (model Opus, started 2026-11-10). Its job: keep dotfiles in sync between the two machines. Its memory on the slave holds one rule: the role of a machine comes from its network name.
@@ -52,9 +53,9 @@ Facts found (2026-11-12):
 
 | Command | Does |
 |---|---|
-| `init <project dir>` | Checks that the folder is a git repo. Makes `docs/prompts/<project>-watchdog.md` from the template and `docs/decisions/queue.md` from its template, only if they do not exist (never overwrites). Prints the two paths and `created` or `kept`. `<project>` = the folder name. |
+| `init <project dir>` | Checks that the folder is a git repo. Makes `.claude/docs/prompts/<project>-watchdog.md` from the template and `.claude/docs/decisions/queue.md` from its template, only if they do not exist (never overwrites). Prints the two paths and `created` or `kept`. `<project>` = the folder name. |
 | `next-id <queue file>` | Prints the next free D-id: the highest number of all `D` ids and `ref` ids in both tables + 1, two digits minimum (`D01`). Never reuses an id. |
-| `start-line <project dir> <model>` | Prints the title `<project> (watchdog)` and the start line `Run docs/prompts/<project>-watchdog.md. Model: <model>.` Refuses (exit 2) a Fable model unless `--owner-said-fable` is given. |
+| `start-line <project dir> <model>` | Prints the title `<project> (watchdog)` and the start line `Run .claude/docs/prompts/<project>-watchdog.md. Model: <model>.` Refuses (exit 2) a Fable model unless `--owner-said-fable` is given. |
 | `public <project dir>` | Prints `public` or `private` for the `origin` remote (`gh repo view --json visibility`; `unknown` when `gh` is missing). The skill keeps a public project part free of work names and hostnames. |
 
 ## Procedure A: make or hand off the watchdog (SKILL.md)
@@ -63,7 +64,7 @@ Run in a session whose folder is the project (on the machine where the watchdog 
 
 1. **Check the tools.** `mcp__ccd_session__start_session`, `mcp__ccd_session__list_start_targets`, `mcp__ccd_session_mgmt__get_session`, `list_sessions` and `CronCreate` must be loadable (ToolSearch). If `start_session` is missing: go on, and at step 6 give the owner the start line.
 2. **Find the old watchdog.** `list_sessions` for a title that ends in "(watchdog)" with this project folder. Ask the owner about a watchdog on the other machine (the master cannot list slave sessions; read its metadata over SSH when he agrees).
-3. **Interview.** AskUserQuestion only when this session is not a watchdog; a watchdog (procedure B, or the old watchdog that runs the launcher) asks in chat. Only what is open: owned areas (what the watchdog keeps and what goes to other sessions), the session table (live sessions, what each owns), status sources (files, commands, skills, the other machine), the decision queue path (default `docs/decisions/queue.md`), a report or artifact (if any), the model (default Opus; Fable only on the owner's word).
+3. **Interview.** AskUserQuestion only when this session is not a watchdog; a watchdog (procedure B, or the old watchdog that runs the launcher) asks in chat. Only what is open: owned areas (what the watchdog keeps and what goes to other sessions), the session table (live sessions, what each owns), status sources (files, commands, skills, the other machine), the decision queue path (default `.claude/docs/decisions/queue.md`), a report or artifact (if any), the model (default Opus; Fable only on the owner's word).
 4. **Write the project part.** `watchdog.sh init`, then fill the template with Edit: version line, start, role (short), owned areas, sessions table, status sources, machine facts (master/slave, how to reach the other one), open items, report. Public repo: titles and ids only, no work names, no hostnames. The owner approves the text before step 6.
 5. **Commit** the project part and the queue file only on the owner's word; push only on his word.
 6. **Start.** `watchdog.sh start-line`; then `start_session` (`initiation: user_asked`, `context: fresh`, `cwd` = the project, the model from step 3, title `<project> (watchdog)`, prompt = the start line). With no `start_session`: give the owner the start line and the title; he opens and pins the session.

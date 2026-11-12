@@ -32,30 +32,30 @@ setup
 p="$tmp/proj/myproj"
 wd init "$p"
 check "init: exits 0"                           "$rc"
-[[ -f "$p/docs/prompts/myproj-watchdog.md" ]];  check "init: makes the project part" $?
-[[ -f "$p/docs/decisions/queue.md" ]];          check "init: makes the decision queue" $?
+[[ -f "$p/.claude/docs/prompts/myproj-watchdog.md" ]];  check "init: makes the project part" $?
+[[ -f "$p/.claude/docs/decisions/queue.md" ]];          check "init: makes the decision queue" $?
 has "$out" "created";                           check "init: says created" $?
-grep -q '{{PROJECT}}' "$p/docs/prompts/myproj-watchdog.md"; [[ $? != 0 ]]
+grep -q '{{PROJECT}}' "$p/.claude/docs/prompts/myproj-watchdog.md"; [[ $? != 0 ]]
 check "init: fills the project name"            $?
-grep -qF 'myproj (watchdog)' "$p/docs/prompts/myproj-watchdog.md"; check "init: the part names the title" $?
-echo "owner text" >> "$p/docs/prompts/myproj-watchdog.md"
-a="$(sum "$p/docs/prompts/myproj-watchdog.md")"; b="$(sum "$p/docs/decisions/queue.md")"
+grep -qF 'myproj (watchdog)' "$p/.claude/docs/prompts/myproj-watchdog.md"; check "init: the part names the title" $?
+echo "owner text" >> "$p/.claude/docs/prompts/myproj-watchdog.md"
+a="$(sum "$p/.claude/docs/prompts/myproj-watchdog.md")"; b="$(sum "$p/.claude/docs/decisions/queue.md")"
 wd init "$p"
 check "init again: exits 0"                     "$rc"
 has "$out" "kept";                              check "init again: says kept" $?
-[[ "$(sum "$p/docs/prompts/myproj-watchdog.md")" == "$a" ]]; check "init again: project part unchanged" $?
-[[ "$(sum "$p/docs/decisions/queue.md")" == "$b" ]];         check "init again: queue unchanged" $?
+[[ "$(sum "$p/.claude/docs/prompts/myproj-watchdog.md")" == "$a" ]]; check "init again: project part unchanged" $?
+[[ "$(sum "$p/.claude/docs/decisions/queue.md")" == "$b" ]];         check "init again: queue unchanged" $?
 mkdir -p "$tmp/nogit"
 wd init "$tmp/nogit"
 [[ "$rc" != 0 ]];                               check "init: refuses a folder that is not a git repo" $?
-[[ ! -e "$tmp/nogit/docs" ]];                   check "init: ... and writes nothing there" $?
+[[ ! -e "$tmp/nogit/.claude" ]];                   check "init: ... and writes nothing there" $?
 rm -rf "$tmp"
 
 # --- next-id ----------------------------------------------------------------
 setup
 p="$tmp/proj/myproj"
 wd init "$p" >/dev/null
-wd next-id "$p/docs/decisions/queue.md"
+wd next-id "$p/.claude/docs/decisions/queue.md"
 [[ "$out" == D01 ]];                            check "next-id: empty queue gives D01" $?
 q="$tmp/queue.md"
 cat > "$q" <<'MD'
@@ -82,7 +82,7 @@ p="$tmp/proj/myproj"
 wd start-line "$p" opus
 check "start-line: exits 0"                     "$rc"
 has "$out" "myproj (watchdog)";                 check "start-line: names the title" $?
-has "$out" "Run docs/prompts/myproj-watchdog.md"; check "start-line: names the prompt file" $?
+has "$out" "Run .claude/docs/prompts/myproj-watchdog.md"; check "start-line: names the prompt file" $?
 has "$out" "Model: opus";                       check "start-line: names the model" $?
 wd start-line "$p" Claude-Fable-5
 [[ "$rc" == 2 ]];                               check "start-line: refuses Fable (exit 2)" $?

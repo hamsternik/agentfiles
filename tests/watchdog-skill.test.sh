@@ -53,5 +53,8 @@ done
 
 check "no session id in the skill"              lacks "$skill" 'local_[0-9a-f]{8}'
 check "no home path in the skill"               lacks "$skill" '/Users/'
+# Agent-specific project files live in .claude/docs/, not in the root docs/ (owner, 2026-11-12).
+check "project part lives in .claude/docs"      holds "$skill/SKILL.md" ".claude/docs/prompts/<project>-watchdog.md"
+check "no root docs/ for prompts or the queue"  lacks "$skill" '(^|[^/a-z.])docs/(prompts|decisions)'
 
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }

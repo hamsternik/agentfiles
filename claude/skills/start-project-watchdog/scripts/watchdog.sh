@@ -1,6 +1,6 @@
 #!/bin/bash
 # Mechanical steps of the start-project-watchdog skill. macOS /bin/bash 3.2, no Homebrew tools.
-#   watchdog.sh init <project dir>              make docs/prompts/<project>-watchdog.md and docs/decisions/queue.md (never overwrite)
+#   watchdog.sh init <project dir>              make .claude/docs/prompts/<project>-watchdog.md and .claude/docs/decisions/queue.md (never overwrite)
 #   watchdog.sh next-id <queue file>            print the next free D-id (highest D number in all table rows + 1)
 #   watchdog.sh start-line <project dir> <model> [--owner-said-fable]
 #                                               print the title and the start line; refuse Fable without the owner's word
@@ -40,8 +40,8 @@ cmd_init() {
   local dir name
   dir="$(project_dir "${1:-}")"
   name="$(basename "$dir")"
-  render "$templates/project-watchdog.md" "$dir/docs/prompts/$name-watchdog.md" "$name"
-  render "$templates/queue.md" "$dir/docs/decisions/queue.md" "$name"
+  render "$templates/project-watchdog.md" "$dir/.claude/docs/prompts/$name-watchdog.md" "$name"
+  render "$templates/queue.md" "$dir/.claude/docs/decisions/queue.md" "$name"
 }
 
 cmd_next_id() {
@@ -69,7 +69,7 @@ cmd_start_line() {
   name="$(basename "$dir")"
   printf 'Title: %s (watchdog)\n' "$name"
   printf 'Folder: %s\n' "$dir"
-  printf 'Start line: Run docs/prompts/%s-watchdog.md. Model: %s%s.\n' "$name" "$model" "$note"
+  printf 'Start line: Run .claude/docs/prompts/%s-watchdog.md. Model: %s%s.\n' "$name" "$model" "$note"
 }
 
 cmd_public() {

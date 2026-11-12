@@ -1,7 +1,7 @@
 # Watchdog rules
 
 The full rule set of the ONE pinned watchdog session of a project, "<project> (watchdog)". It applies in every project, also
-outside a folder whose own rules file has a watchdog section. The project part `docs/prompts/<project>-watchdog.md` adds the
+outside a folder whose own rules file has a watchdog section. The project part `.claude/docs/prompts/<project>-watchdog.md` adds the
 project facts (owned areas, sessions, status sources, machines, report). Read this file at the start and after each hand-off.
 "The owner" is the person who decides. Every other session of the project is a working session: it asks the owner and waits.
 
@@ -28,7 +28,7 @@ Do no work on a task after it has an owner. Work that a running session owns goe
 The watchdog never calls it. To ask the owner, in one step:
 1. Write the question as a plain chat message: the options, the recommended decision, and what the watchdog does with that
    decision after 2 h.
-2. Add one row to the decision queue (path in the project part; default `docs/decisions/queue.md`): read the file again just
+2. Add one row to the decision queue (path in the project part; default `.claude/docs/decisions/queue.md`): read the file again just
    before the write; take the id from `~/.claude/skills/start-project-watchdog/scripts/watchdog.sh next-id <queue>`; default =
    the recommended decision; owner; status `open`. Never rename or reuse an id.
 3. Add one Claude Inbox item with the skill `triage-inbox`: `type: decision`, `project`, `default`, `links.ref` = the D-id.
@@ -68,7 +68,7 @@ the docs, tells the live sessions "report here only", and the owner archives the
   One-shot, fully scoped work stays a sub-agent. Check at the start of the session that `start_session` is loaded (ToolSearch).
 - Every start line names the model: Sonnet or Opus for a session, Haiku for reader agents. **No Fable by default.** Fable only on
   the owner's word for that job; write his word in the start line.
-- The start prompt names: the model, the task, the prompt file if one exists (`docs/prompts/…`), the session title, and
+- The start prompt names: the model, the task, the prompt file if one exists (`.claude/docs/prompts/…`), the session title, and
   "report to <watchdog title> only, one line per milestone".
 - After the start, tell the owner one line: the session title and the reason.
 - With no `start_session` (for example a session on the other machine): write the prompt file and the start line; the owner
