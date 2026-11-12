@@ -23,6 +23,8 @@ check "front matter has a description"          grep -qE '^description: .{80,}' 
 check "SKILL.md points to rules.md"             holds "$skill/SKILL.md" "rules.md"
 check "SKILL.md uses the script"                holds "$skill/SKILL.md" "scripts/watchdog.sh"
 check "SKILL.md has the hand-off procedure"     holds "$skill/SKILL.md" "500 k"
+# The watchdog is a standalone top-level session of the project, not nested under the launcher (owner, 2026-11-12).
+check "SKILL.md detaches the new watchdog"      holds "$skill/SKILL.md" "mcp__ccd_session_mgmt__detach_session"
 
 # One anchor per lesson (a)-(j) of the watchdog, plus the extra org rules.
 for anchor in \

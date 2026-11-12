@@ -29,6 +29,7 @@ Interview, 2026-11-12:
 | 3 | How the skill makes the session | **Launcher:** run the skill in any session of the project; it interviews, writes the project part, and starts a new session with `start_session`. With no `start_session`, it gives the owner the start line. |
 | 4 | Extra org rule sections in the skill | **All four:** Bulk AI jobs, Deleting files, HTML reports, Obsolete documents. |
 | 5 | Place of the project files (2026-11-12, after the first use) | **`.claude/docs/`** in the project, not the root `docs/`: the files are specific to one AI agent and to the Claude desktop app. |
+| 6 | The watchdog session (2026-11-12, after the first use) | **A standalone top-level session of the project**, not nested under the launcher: step 6 calls `detach_session` at once after `start_session` (`use_worktree: false`). With no `start_session` or `detach_session`, the owner gets a one-line start prompt to run in the project. |
 
 Facts found (2026-11-12):
 - The old "dotfiles/ (watchdog)" is a slave session (model Opus, started 2026-11-10). Its job: keep dotfiles in sync between the two machines. Its memory on the slave holds one rule: the role of a machine comes from its network name.
