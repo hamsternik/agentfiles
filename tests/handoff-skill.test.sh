@@ -50,7 +50,7 @@ check "skill has no home paths"                lacks "$skill" '/Users/[a-z]'
 check "skill code has no session ids"          lacks "$skill/scripts" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "skill text has no session ids"          lacks "$skill/SKILL.md" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "context.py is executable"                [ -x "$skill/scripts/context.py" ]
-check "latest.py alias is executable"           [ -x "$skill/scripts/latest.py" ]
+check "latest.py alias is gone"                 [ ! -e "$skill/scripts/latest.py" ]
 check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py" ]
 check "rex-watchdog.sh is gone"                 [ ! -e "$skill/scripts/rex-watchdog.sh" ]
 check "the launchers package exists"            [ -f "$skill/scripts/launchers/__init__.py" ]

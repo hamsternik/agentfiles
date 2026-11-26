@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of scripts/watchdog.py (watchdog CLI v2) and the latest.py alias. Use cases: see the spec, section 8,
+"""Tests of scripts/watchdog.py (watchdog CLI v2). Use cases: see the spec, section 8,
 and the numbered list given in chat before this file (1-22)."""
 import json
 import os
@@ -214,7 +214,7 @@ class TestStatus(Base):
         self.assertEqual(f.read_text(), text)
 
 
-# 9-11 restore (v1 latest.py cases)
+# 9-11 restore
 class TestRestore(Base):
     def find(self, title=T):
         return wd.find_latest(title, PROJECT, self.projects)
@@ -447,21 +447,14 @@ class TestReadyRetire(Base):
         self.assertEqual(self.retire("--verify").returncode, 0)
 
 
-# 21-22 help and alias
-class TestHelpAlias(Base):
+# 21 help
+class TestHelp(Base):
     def test_help_lists_every_subcommand(self):
         for args in (["help"], []):
             r = self.cli(*args)
             self.assertEqual(r.returncode, 0, r.stderr)
             for sub in ("status", "restore", "new", "handoff", "ready", "retire", "help"):
                 self.assertRegex(r.stdout, rf"(?m)^\s*{sub}\b.+", sub)
-
-    def test_latest_alias(self):
-        self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z")
-        a = self.cli("--title", T, "--project-dir", PROJECT, script=SCRIPTS / "latest.py")
-        b = self.cli("restore", "--title", T, "--project-dir", PROJECT)
-        self.assertEqual((a.returncode, a.stdout), (b.returncode, b.stdout))
-        self.assertIn("watchdog.py restore", a.stderr)
 
 
 
