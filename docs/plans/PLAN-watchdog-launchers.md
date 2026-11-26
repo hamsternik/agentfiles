@@ -18,7 +18,7 @@ Skill: `claude/skills/handoff-session-context/`.
 ## What
 
 ### Scope
-- In: a launcher interface; two launchers, `terminal` (the default) and `rex`; a `--frontend` option on the
+- In: a launcher interface; two launchers, `terminal` (the default; its launcher removed 2026-11-26) and `rex`; a `--frontend` option on the
   commands that start or type; `rex-watchdog.sh` rewritten in Python as the `rex` launcher, then removed; tests
   with a fake launcher.
 - Out (non-goals): a Claude desktop launcher (add it when a real need comes); detection of the front-end from the
@@ -31,7 +31,7 @@ Skill: `claude/skills/handoff-session-context/`.
 |---|---|---|
 | CLI + decisions | `scripts/watchdog.py` | the one entry point. Transcripts, live sessions, names, guards, argv, prompts. No front-end. |
 | Orchestration | `scripts/launchers/steps.py` (new, no CLI) | the order of the steps of `new`, `restore`, `handoff`, `retire`; the waits (name seen, rename seen, process ended); exit codes. No front-end. |
-| Launchers | `scripts/launchers/{__init__,terminal,rex}.py` (new, no CLI) | the calls of one front-end only. `rex.py` replaces `rex-watchdog.sh`. |
+| Launchers | `scripts/launchers/{__init__,rex,steps}.py` (new, no CLI; `terminal.py` removed 2026-11-26) | the calls of one front-end only. `rex.py` replaces `rex-watchdog.sh`. |
 
 ### The CLI (one entry point: `watchdog.py`)
 - `status`, `ready`, `help`: as now. They never start or type.
@@ -67,7 +67,7 @@ the step for the owner and does not fail.
 
 | Capability | terminal | rex |
 |---|---|---|
-| `start` | prints `cd DIR && claude …` (quoted) | `rex window new -s S "<window>" -c DIR --keep-open -- argv` |
+| `start` | no launcher (removed 2026-11-26): `watchdog.py` prints its decision | `rex window new -s S "<window>" -c DIR --keep-open -- argv` |
 | `find_pane` | no | `rex window ls` + `rex block call … process` |
 | `send` | no | `rex send` + `rex send-key enter` |
 | `rename` | no | `rex window rename` |
@@ -152,8 +152,7 @@ Launchers (PATH stubs that record the calls)
 22. rex `find_pane` reads the window and block JSON → the pane with the matching child pid; none → `None`.
 23. rex `find_pane` and `rename_window` with a label that has a space and `#` → the right window (protects: the old
     shell split of labels at spaces).
-24. terminal `start` → one line `cd DIR && claude …` that `shlex.split` gives back as the same argv (protects:
-    quoting of the prompt).
+24. (removed 2026-11-26, KISS: the terminal launcher is gone; tests 1-2 protect the terminal front-end.)
 
 Contract
 25. The JSON keys of `new`, `restore`, `handoff` stay the same, plus `window_label` (protects: other callers of `--json`).
@@ -165,7 +164,7 @@ Contract
 2. Write tests 1, 2, 25, 26 against the current code; 26 is red.
 3. Write tests 3–24; they are red (no `--frontend`, no `launchers/`).
 4. Add `window_label_for` to `watchdog.py` and the `window_label` key.
-5. Add `launchers/__init__.py` (Protocol, `Pane`, `Started`, `get(name)`), `launchers/terminal.py`,
+5. Add `launchers/__init__.py` (Protocol, `Pane`, `Started`, `get(name)`), `launchers/terminal.py` (removed 2026-11-26),
    `launchers/rex.py` (rewritten from `rex-watchdog.sh`: `start_window`, `find_pane`, the send and rename calls,
    the Rex session lookup; one `_rex()` that prints `+ rex …` on stderr, as now; `subprocess` + `json`).
 6. Add `launchers/steps.py` (from `rex-watchdog.sh`: the waits of `start_window` and `do_retire`; env
@@ -209,10 +208,12 @@ Changes found during the build (each one also changed in the text above):
   session entries), driven through `watchdog.py --frontend rex`; plus 23b (`--rex S`) and 32 (`session new`).
 - `tests/handoff-skill.test.sh` and the start line of the skill `start-project-watchdog` name `watchdog.py … --frontend
   rex`.
-- With no `--frontend`, the commands print the decision text as before; `Terminal.start` (`cd DIR && claude …`) is
-  not used by the CLI. `--json` with `--frontend rex` prints the JSON and also acts.
+- With no `--frontend`, the commands print the decision text as before. The terminal launcher
+  (`launchers/terminal.py`, `Terminal.start` = `cd DIR && claude …`) was not used by the CLI and is removed
+  (owner, 2026-11-26, KISS); `launchers.get` knows only `rex`. `--json` with `--frontend rex` prints the JSON
+  and also acts.
 
-Tests: 109 Python tests (test_watchdog 50, test_context 33, test_launchers 26), `make test` (47 checks in
+Tests: 108 Python tests (test_watchdog 50, test_context 33, test_launchers 25), `make test` (47 checks in
 watchdog-frontend-rex), `make lint` clean.
 
 Live check on the master (one Haiku test session `shelf-crawl (watchdog-livecheck)`, no second child session: the
