@@ -1,7 +1,7 @@
 # PLAN — watchdog launchers (handoff-session-context)
 
-Status: draft v6 (owner's answers of v1–v5 applied), waits for the owner's approval. Skill:
-`claude/skills/handoff-session-context/`.
+Status: v6 approved by the owner (2026-11-26); built 2026-11-26, steps 1-8 done (build notes at the end).
+Skill: `claude/skills/handoff-session-context/`.
 
 ## Why
 
@@ -50,14 +50,14 @@ Status: draft v6 (owner's answers of v1–v5 applied), waits for the owner's app
 ### The contract
 - `watchdog.py` gives a start plan. Its JSON keys stay as they are now (`session`, `name`, `argv`, `project_dir`;
   `restore` also `title`, `warning`; `handoff` also `old`). A test fixes these keys.
-- New key `window`: the Rex window label, made in `watchdog.py`, so the naming rule lives in the decision layer
-  only.
+- New key `window_label`: the Rex window label, made in `watchdog.py`, so the naming rule lives in the decision
+  layer only. (Not `window`: that key already holds the context window size in tokens in the `restore` JSON.)
 
 Launcher interface (`typing.Protocol`):
 
 | Operation | Input → output | Capability |
 |---|---|---|
-| `start(plan)` | starts or prints the argv in `plan["project_dir"]`, window `plan["window"]` → `Started(where)` | `start` |
+| `start(plan)` | starts or prints the argv in `plan["project_dir"]`, window `plan["window_label"]` → `Started(where)` | `start` |
 | `find_pane(pid)` | → `Pane(where, window, label)` or `None` | `find_pane` |
 | `send_line(pane, text)` | types the text and presses Return | `send` |
 | `rename_window(pane, label)` | → nothing | `rename` |
@@ -77,14 +77,15 @@ A watchdog has the same names whoever starts it: a skill session, a direct `watc
 The caller's own window, Rex session or environment never changes a name.
 - Claude session name: the fixed title (`restore`) or `<fixed title> #<short id>` (`new`, `handoff`), as now.
 - Rex session: the Rex session whose label is the project folder name (`basename(project_dir)`). When none exists,
-  `rex session new` makes it. The Rex CLI works outside a Rex pane (`--autostart`), so `--frontend rex` works from
+  one call `rex session new <proj> --window "<label>" -c DIR --keep-open -- argv` makes it and starts the
+  watchdog in its first window. The Rex CLI works outside a Rex pane (`--autostart`), so `--frontend rex` works from
   a plain terminal too. `--rex S` is an explicit override.
 - Rex window label: `<role> #<short id>`. The role is the text in the last `( … )` of the fixed title; a title with
   no `( … )` is the role as it is. No project name: the Rex session already has it.
   `proj (watchdog-master)` → `watchdog-master #de18597a`; `proj (watchdog-slave)` → `watchdog-slave #…`;
   `proj/ (watchdog)` → `watchdog #…`.
 - `retire` renames the window to `archived-<window label>` (`archived-watchdog-master #de18597a`).
-- No `--label` option. `label_for(label, session)` (now `<label>-<id>`) becomes `window_for(title, session)`.
+- No `--label` option. `label_for(label, session)` (now `<label>-<id>`) becomes `window_label_for(title, session)`.
 
 ### Front-end text out of the decisions
 - The handoff prompt names `watchdog.py retire --session OLD --caller NEW --frontend <F>` (dry run first, then
@@ -115,7 +116,7 @@ Front-end option
 5. `--frontend rex` with no `rex` on PATH → a clear error, exit 64, nothing started.
 
 Names
-6. `window_for`: `proj (watchdog-master)` → `watchdog-master #<id>`; `proj/ (watchdog)` → `watchdog #<id>`;
+6. `window_label_for`: `proj (watchdog-master)` → `watchdog-master #<id>`; `proj/ (watchdog)` → `watchdog #<id>`;
    `a (b) (watchdog-slave)` → `watchdog-slave #<id>`; `plain title` → `plain title #<id>`; a title that already
    ends in ` #<8 hex>` → one ` #<id>` only (protects: the project name in the label, and a doubled id).
 7. `new`, `restore`, `handoff` of `proj (watchdog-master)` from callers in the windows `crawl-problems-review` and
@@ -123,8 +124,9 @@ Names
    names that depend on the caller).
 8. Rex session: no `--rex`, a Rex session `proj` exists, the caller is in the Rex session `other` → the window goes
    into `proj` (protects: a watchdog window in the session of a random caller).
-9. Rex session: from a plain terminal, no Rex session `proj` → `rex session new` with the label `proj`, then the
-   window in it (protects: `--frontend rex` that fails outside Rex).
+9. Rex session: from a plain terminal, no Rex session `proj` → one call `rex session new proj --window
+   "<label>" -c DIR --keep-open -- <argv>` (protects: `--frontend rex` that fails when the project has no
+   Rex session yet; no empty extra window).
 10. `--rex S` → the window goes into `S`, no session lookup (protects: an override that is ignored).
 
 Orchestration with a fake launcher
@@ -154,7 +156,7 @@ Launchers (PATH stubs that record the calls)
     quoting of the prompt).
 
 Contract
-25. The JSON keys of `new`, `restore`, `handoff` stay the same, plus `window` (protects: other callers of `--json`).
+25. The JSON keys of `new`, `restore`, `handoff` stay the same, plus `window_label` (protects: other callers of `--json`).
 26. The handoff prompt names `watchdog.py retire … --frontend <F>` with the `<F>` of the call, and not
     `rex-watchdog.sh` (protects: Rex text in the decisions; a successor that retires through another front-end).
 
@@ -162,7 +164,7 @@ Contract
 1. Commit the restore prompt change (prerequisite).
 2. Write tests 1, 2, 25, 26 against the current code; 26 is red.
 3. Write tests 3–24; they are red (no `--frontend`, no `launchers/`).
-4. Add `window_for` to `watchdog.py` and the `window` key.
+4. Add `window_label_for` to `watchdog.py` and the `window_label` key.
 5. Add `launchers/__init__.py` (Protocol, `Pane`, `Started`, `get(name)`), `launchers/terminal.py`,
    `launchers/rex.py` (rewritten from `rex-watchdog.sh`: `start_window`, `find_pane`, the send and rename calls,
    the Rex session lookup; one `_rex()` that prints `+ rex …` on stderr, as now; `subprocess` + `json`).
@@ -193,3 +195,40 @@ Contract
 
 ## Open questions
 None.
+
+## Build notes (2026-11-26)
+
+Changes found during the build (each one also changed in the text above):
+- The JSON key is `window_label`, not `window`: the `restore` JSON already has `window` (the context window size).
+- The function is `window_label_for`: `context.py` already has `window_for` (the context window size).
+- A missing Rex session is one call, `rex session new <proj> --window "<label>" … -- argv` (from `rex session new
+  --help`): no second call, no empty window.
+- The Rex launcher tests use a recording `run` in the process; the CLI tests and the shell test use a fake `rex` on
+  PATH.
+- `tests/rex-watchdog.test.sh` is now `tests/watchdog-frontend-rex.test.sh`: the same fake `rex` (sleep processes,
+  session entries), driven through `watchdog.py --frontend rex`; plus 23b (`--rex S`) and 32 (`session new`).
+- `tests/handoff-skill.test.sh` and the start line of the skill `start-project-watchdog` name `watchdog.py … --frontend
+  rex`.
+- With no `--frontend`, the commands print the decision text as before; `Terminal.start` (`cd DIR && claude …`) is
+  not used by the CLI. `--json` with `--frontend rex` prints the JSON and also acts.
+
+Tests: 105 Python tests (test_watchdog 50, test_context 33, test_launchers 22), `make test` (45 checks in
+watchdog-frontend-rex), `make lint` clean.
+
+Live check on the master (one Haiku test session `shelf-crawl (watchdog-livecheck)`, no second child session: the
+bulk-job rule):
+1. `new --frontend rex` from a Rex pane → window `watchdog-livecheck #b7e63c93` in the Rex session `shelf-crawl`; the
+   session ran `ready` and replied.
+2. `restore --frontend rex` with no `REX_*` variables → the same label in `shelf-crawl`; the session got the restore
+   prompt and acted on it.
+3. `restore` with no `--frontend` → printed the line, started nothing; the line, pasted into `zsh -lc`, resumed the
+   session with the prompt.
+4. `retire --frontend rex --yes` with no successor → exit 2, no Rex call.
+Not run live: `handoff --frontend rex` + `retire --yes` (a second child session = a bulk job; covered by use cases
+14-20, 26 and the shell test 26-30).
+
+Follow-ups (not in this plan):
+- `restore` leaves the old window of the exited session open (`--keep-open`) with the same label: 2 windows with one
+  label in the Rex session. `retire` finds panes by pid, so it still works.
+- The slave did not answer ssh at the build: its live sessions were not checked for the old `rex-watchdog.sh retire`
+  text before its next `git pull`.
