@@ -35,18 +35,29 @@ check "SKILL.md uses context.py size"           holds "$skill/SKILL.md" 'python3
 check "SKILL.md finds its script by its own dir" holds "$skill/SKILL.md" 'C=${CLAUDE_SKILL_DIR}/scripts/context.py'
 check "SKILL.md has no fixed install path"      lacks "$skill/SKILL.md" '[~]/.claude/skills'
 check "SKILL.md marks the hand-off done"        holds "$skill/SKILL.md" "mark-done"
-check "SKILL.md starts the successor in Rex"     holds "$skill/SKILL.md" "rex window new"
+# shellcheck disable=SC2016
+check "SKILL.md sets W to watchdog.py"          holds "$skill/SKILL.md" 'W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py'
+# shellcheck disable=SC2016
+check "SKILL.md sets R to rex-watchdog.sh"      holds "$skill/SKILL.md" 'R=${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh'
 check "SKILL.md leaves rename to the owner"      holds "$skill/SKILL.md" "/rename"
 check "SKILL.md names the limits"               holds "$skill/SKILL.md" "40 %"
 check "template exists"                         [ -f "$skill/templates/handoff.md" ]
 for section in "## State" "## Open items" "## Facts" "## Next steps" "## Hand-off steps"; do
   check "template has $section"                 holds "$skill/templates/handoff.md" "$section"
 done
-check "skill has no home paths or session ids"  lacks "$skill" '/Users/[a-z]|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
+check "skill has no home paths"                lacks "$skill" '/Users/[a-z]'
+check "skill code has no session ids"          lacks "$skill/scripts" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
+check "skill text has no session ids"          lacks "$skill/SKILL.md" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "context.py is executable"                [ -x "$skill/scripts/context.py" ]
-check "latest.py is executable"                 [ -x "$skill/scripts/latest.py" ]
+check "latest.py alias is executable"           [ -x "$skill/scripts/latest.py" ]
+check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py" ]
+check "rex-watchdog.sh is executable"           [ -x "$skill/scripts/rex-watchdog.sh" ]
 # shellcheck disable=SC2016
-check "SKILL.md has the restore procedure"     holds "$skill/SKILL.md" 'python3 ${CLAUDE_SKILL_DIR}/scripts/latest.py --title'
+for cmd in '$R handoff' '$R retire' '$R restore' '$R new' '$R help' '$W ready' '$W status' '$W help'; do
+  check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
+done
+check "SKILL.md no longer uses latest.py"       lacks "$skill/SKILL.md" 'latest\.py'
+check "start-project-watchdog points to Rex"   holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "rex-watchdog.sh new"
 
 # 3. Install step: work projects only (Nikita 2026-11-24: no work skill in ~/.claude/skills)
 setup() {

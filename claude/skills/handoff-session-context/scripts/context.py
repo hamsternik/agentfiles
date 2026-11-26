@@ -115,7 +115,8 @@ def window_for(session, model, env, cache):
     except ValueError:
         pass
     m = (model or "").lower()
-    return (1_000_000 if any(k in m for k in ("opus", "fable", "sonnet")) else 200_000), "table"
+    # Claude 5 family: 1 M (Haiku 5.5 too: statusline 8 % at about 79 k tokens, 2026-11-26); unknown: the safe 200 k
+    return (1_000_000 if any(k in m for k in ("opus", "fable", "sonnet", "haiku")) else 200_000), "table"
 
 
 def _limits(env):

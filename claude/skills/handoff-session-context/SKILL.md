@@ -1,6 +1,6 @@
 ---
 name: handoff-session-context
-description: Measure this session's own context size and hand off the essentials of the session to a new session before the context gets too big (hand off at 40 % of the model's window, the successor runs by 50 %). Writes the hand-off file, starts the successor with the same model and title, marks the hand-off done, tells the watchdog or the owner. Use when the Stop hook says "Run the skill handoff-session-context", when the owner or a watchdog asks for a hand-off, at each wake-up of a loop session (check the size), when the owner asks "how big is the context?", or to restore the latest session of a fixed title ("restore the watchdog") after Ctrl-C or an upgrade.
+description: Measure this session's own context size and hand off the essentials of the session to a new session before the context gets too big (hand off at 40 % of the model's window, the successor runs by 50 %). Writes the hand-off file, starts the successor with the same model and title, marks the hand-off done, tells the watchdog or the owner. Use when the Stop hook says "Run the skill handoff-session-context", when the owner or a watchdog asks for a hand-off, at each wake-up of a loop session (check the size), when the owner asks "how big is the context?", to start, restore or retire a project watchdog session ("restore the watchdog", "start a new watchdog"), or for its status.
 ---
 
 # Hand off the session context
@@ -9,7 +9,8 @@ A session stays below about half of its context window: a big context costs more
 mistakes. At **40 %** of the window the session hands off; by **50 %** the successor runs. (1 M window: 400 k / 500 k;
 200 k window: 80 k / 100 k.) Decision D50 of the owner, 2026-11-23; skill since 2026-11-24.
 
-Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`. This session's id is `${CLAUDE_SESSION_ID}`.
+Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`, `W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py`,
+`R=${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh`. This session's id is `${CLAUDE_SESSION_ID}`.
 Install: per work project (a link in `<project>/.claude/skills/`, the hook in `<project>/.claude/settings.local.json`),
 by the agentfiles watchdog step; not at user level.
 
@@ -19,8 +20,8 @@ by the agentfiles watchdog step; not at user level.
 `tokens=… window=… pct=… level=ok|handoff|over model=… source=cache|table|env|maxctx`.
 
 - Tokens: input + cache write + cache read of the newest reply in this session's transcript.
-- Window: the statusline cache (`~/.claude/context-window/<id>.json`), else the model table (Opus, Fable, Sonnet 1 M;
-  Haiku and unknown 200 k). `HANDOFF_WINDOW_TOKENS`, `HANDOFF_AT_PCT`, `HANDOFF_MAX_PCT` override.
+- Window: the statusline cache (`~/.claude/context-window/<id>.json`), else the model table (Opus, Fable, Sonnet,
+  Haiku 1 M; unknown 200 k). `HANDOFF_WINDOW_TOKENS`, `HANDOFF_AT_PCT`, `HANDOFF_MAX_PCT` override.
 - A loop session (chain watcher, OCR parent, watchdog) runs the check at each wake-up. At `handoff` or `over`: hand off.
 - A watchdog may check a loop session of its machine with `--session <that id>` and ask it to run this skill.
 
@@ -35,33 +36,37 @@ from 50 % it asks after every turn. After step 4 below it stays silent for this 
    - else: `python3 $C handoff-path --cwd "$PWD" --title "<session title>"` (`docs/local/` of the repo, else the cwd).
    Never overwrite a hand-off file. Write only the essentials: the successor works from this file and the project
    files, not from this chat. State, running processes with PIDs, open items, facts no file holds yet, next steps.
-3. **Start the successor** on this machine with the same model and the same title. First prompt:
-   `Read <hand-off file> first, then <prompt file, if any>. You continue the work of session ${CLAUDE_SESSION_ID}. Run the hand-off steps of its file.`
-   - In Rex (`REX_SESSION` is set): `rex window new -s <rex session> <label>-2 -c <cwd> --keep-open -- claude --model <model> -n "<title>" --remote-control "<title>" "<first prompt>"`
-     (`rex whoami --json` gives the Rex session and the window label).
-   - Else, if `start_session` exists: the same model, title, cwd and first prompt.
-   - Else: start nothing; give the owner the start line.
-   - Fable only on the owner's word for this job (org rule). If the old session runs on Fable and has no record of his
-     word, start on Opus and say so.
+3. **Start the successor** on this machine with the same model. The successor's name is `<fixed title> #<its short
+   id>`; the fixed title is the session title without a ` #xxxxxxxx` suffix.
+   - In Rex (`REX_SESSION` is set; `rex whoami --json` gives the Rex session and the window label):
+     `$R handoff --title "<fixed title>" --handoff-file <file> --session ${CLAUDE_SESSION_ID} --rex <rex session> --label <label> [--prompt-file <prompt>]`.
+     It refuses Fable without the owner's word (add `--owner-said-fable` only when he said so for this job).
+   - Not in Rex: `python3 $W handoff …` (same options, no `--rex`/`--label`) prints the `claude` line; give it to the owner.
 4. **Mark it:** `python3 $C mark-done --session ${CLAUDE_SESSION_ID} --file <hand-off file>`.
-5. **Tell, in one line:** a working session tells its watchdog (by the bare fixed title); a watchdog tells the owner in
-   chat. The line: the hand-off file, where the successor runs, and "rename the old session to `deprecated <title>` with
-   `/rename` and `/exit` it".
-6. **Stop.** Do no more work in this session. Do not rename or exit it: the owner does that (a session cannot run
-   `/rename` on itself).
+5. **Tell, in one line:** a working session tells its watchdog; a watchdog tells the owner in chat. The line: the
+   hand-off file and the successor's name and window.
+6. **Stop.** Do no more work in this session. The successor retires it (next section); a session cannot rename itself.
 
-## Restore a session of a fixed title (after Ctrl-C, an upgrade, a crash)
+## First steps of a successor (its first prompt says so)
 
-Use when the owner asks "restore the watchdog" (or another session with a fixed title) in a new window.
+1. `python3 $W ready --session ${CLAUDE_SESSION_ID}`, then read the hand-off file and set the wake-ups and crons again.
+2. Retire the old session: `$R retire --session <old id> --caller ${CLAUDE_SESSION_ID}` (dry run: check the plan), then
+   the same with `--yes`. It types `/rename deprecated <old name>` and `/exit` into the old pane, checks the new name,
+   waits for the old process to end, and renames its window `archived-<label>`. It refuses without your `ready`.
 
-1. `python3 ${CLAUDE_SKILL_DIR}/scripts/latest.py --title "<fixed title>" [--project-dir <dir>]` prints the latest
-   session of that title (its own last title record; forks and renames handled), its context level and the exact
-   `claude --resume …` line. Exit 1: no such session.
-2. Level `handoff` or `over` (the script prints a WARNING): do not resume. Start a new session from a hand-off file instead.
-3. Else open it: add `--rex <rex session> --label <window label>` (or give the owner the line). The script refuses
-   (exit 2) while the old session still runs (a live pid in `~/.claude/sessions/`) or was active in the last 2 minutes.
-   Never resume one id in two windows.
-4. The resumed session sets its crons, wake-ups and background processes again: they stop with the old process.
+## Watchdog CLI (`$W` = `${CLAUDE_SKILL_DIR}/scripts/watchdog.py`, `$R` = `${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh`)
+
+`watchdog.py` decides and never calls Rex; `rex-watchdog.sh` runs the Rex calls and asks `watchdog.py` first.
+`python3 $W help` and `$R help` list every command.
+
+- `python3 $W status [--title T]`: the sessions of a watchdog title (id, pid, name, context %, last activity);
+  exit 3 on 2 live sessions of one title. `--check-files <files>` lists stale ids in prompt or memory files (no edit).
+- **New watchdog:** `$R new --title T --model <m> --rex <rex session> --label <label> [--prompt-file <prompt>]`. It
+  refuses while T runs.
+- **Restore** (after Ctrl-C, an upgrade, a crash; the owner asks "restore the watchdog"):
+  `$R restore --title T --rex <rex session> --label <label>`. It refuses while the old session runs or was active in
+  the last 2 minutes. At level `handoff` or `over` the output has a WARNING: do not resume; hand off from a new
+  session instead. The resumed session sets its crons, wake-ups and background processes again.
 
 ## Not in this skill
 

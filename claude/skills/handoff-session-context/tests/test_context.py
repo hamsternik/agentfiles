@@ -103,7 +103,7 @@ class TestContextSize(Tmp):
 class TestWindow(Tmp):
     def test_table(self):
         for model, want in [("claude-opus-5-5", M), ("claude-fable-5-1", M), ("claude-sonnet-5-5", M),
-                            ("claude-haiku-5-5", 200_000), ("something-else", 200_000), (None, 200_000)]:
+                            ("claude-haiku-5-5", M), ("something-else", 200_000), (None, 200_000)]:
             self.assertEqual(context.window_for("s", model, {}, self.cache), (want, "table"), model)
 
     def test_order_env_cache_maxctx_table(self):
@@ -119,7 +119,7 @@ class TestWindow(Tmp):
     def test_bad_cache_file_falls_through(self):
         self.cache.mkdir()
         (self.cache / "s.json").write_text("not json")
-        self.assertEqual(context.window_for("s", "claude-haiku-5-5", {}, self.cache), (200_000, "table"))
+        self.assertEqual(context.window_for("s", "claude-haiku-5-5", {}, self.cache), (M, "table"))
 
 
 class TestLevel(unittest.TestCase):
@@ -174,9 +174,12 @@ class TestHook(Tmp):
         context.mark_done("s", "/p/HANDOFF.md", self.cache)
         self.assertEqual(self.run_hook("s", 900_000), "")
 
-    def test_200k_model(self):
-        out = json.loads(self.run_hook("h", 85_000, model="claude-haiku-5-5"))
+    def test_200k_model(self):  # an unknown model: the safe 200 k window
+        out = json.loads(self.run_hook("h", 85_000, model="some-new-model"))
         self.assertEqual(out["decision"], "block")
+
+    def test_haiku_has_a_1m_window(self):  # 2026-11-26 probe: Haiku 5.5 statusline 8 % at about 79 k tokens
+        self.assertEqual(self.run_hook("h", 85_000, model="claude-haiku-5-5"), "")
 
     def test_cli_hook_exits_0_on_garbage(self):
         r = subprocess.run([sys.executable, str(SCRIPT), "hook"], input="garbage", text=True,
