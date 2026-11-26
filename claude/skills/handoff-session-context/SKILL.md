@@ -9,8 +9,8 @@ A session stays below about half of its context window: a big context costs more
 mistakes. At **40 %** of the window the session hands off; by **50 %** the successor runs. (1 M window: 400 k / 500 k;
 200 k window: 80 k / 100 k.) Decision D50 of the owner, 2026-11-23; skill since 2026-11-24.
 
-Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`, `W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py`,
-`R=${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh`. This session's id is `${CLAUDE_SESSION_ID}`.
+Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`, `W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py`.
+This session's id is `${CLAUDE_SESSION_ID}`.
 Install: per work project (a link in `<project>/.claude/skills/`, the hook in `<project>/.claude/settings.local.json`),
 by the agentfiles watchdog step; not at user level.
 
@@ -38,10 +38,10 @@ from 50 % it asks after every turn. After step 4 below it stays silent for this 
    files, not from this chat. State, running processes with PIDs, open items, facts no file holds yet, next steps.
 3. **Start the successor** on this machine with the same model. The successor's name is `<fixed title> #<its short
    id>`; the fixed title is the session title without a ` #xxxxxxxx` suffix.
-   - In Rex (`REX_SESSION` is set; `rex whoami --json` gives the Rex session and the window label):
-     `$R handoff --title "<fixed title>" --handoff-file <file> --session ${CLAUDE_SESSION_ID} --rex <rex session> --label <label> [--prompt-file <prompt>]`.
+   - `python3 $W handoff --title "<fixed title>" --handoff-file <file> --session ${CLAUDE_SESSION_ID} [--prompt-file <prompt>] --frontend rex`
+     starts it in a Rex window (when this session runs in Rex: `REX_SESSION` is set). Without `--frontend rex`
+     (terminal, the default) it prints the `claude` line: give it to the owner.
      It refuses Fable without the owner's word (add `--owner-said-fable` only when he said so for this job).
-   - Not in Rex: `python3 $W handoff …` (same options, no `--rex`/`--label`) prints the `claude` line; give it to the owner.
 4. **Mark it:** `python3 $C mark-done --session ${CLAUDE_SESSION_ID} --file <hand-off file>`.
 5. **Tell, in one line:** a working session tells its watchdog; a watchdog tells the owner in chat. The line: the
    hand-off file and the successor's name and window.
@@ -50,21 +50,25 @@ from 50 % it asks after every turn. After step 4 below it stays silent for this 
 ## First steps of a successor (its first prompt says so)
 
 1. `python3 $W ready --session ${CLAUDE_SESSION_ID}`, then read the hand-off file and set the wake-ups and crons again.
-2. Retire the old session: `$R retire --session <old id> --caller ${CLAUDE_SESSION_ID}` (dry run: check the plan), then
-   the same with `--yes`. It types `/rename deprecated <old name>` and `/exit` into the old pane, checks the new name,
+2. Retire the old session with the command of your first prompt:
+   `python3 $W retire --session <old id> --caller ${CLAUDE_SESSION_ID} --frontend <F>` (dry run: check the plan),
+   then the same with `--yes`. With `--frontend rex` it types `/rename deprecated <old name>` and `/exit` into the old pane, checks the new name,
    waits for the old process to end, and renames its window `archived-<label>`. It refuses without your `ready`.
 
-## Watchdog CLI (`$W` = `${CLAUDE_SKILL_DIR}/scripts/watchdog.py`, `$R` = `${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh`)
+## Watchdog CLI (`$W` = `${CLAUDE_SKILL_DIR}/scripts/watchdog.py`)
 
-`watchdog.py` decides and never calls Rex; `rex-watchdog.sh` runs the Rex calls and asks `watchdog.py` first.
-`python3 $W help` and `$R help` list every command.
+`watchdog.py` is the one entry point. It decides and knows no front-end. `--frontend terminal` (the default) only
+prints, so it works everywhere; `--frontend rex` hands the decision to the Rex launcher (`scripts/launchers/`), from a
+Rex pane or a plain terminal. Names never depend on the caller: the Rex session is the one labelled with the project
+folder name (made when missing; `--rex S` overrides it), the window label is `<role> #<short id>` with the role from
+the title (`proj (watchdog-master)` → `watchdog-master #de18597a`). `python3 $W help` lists every command.
 
 - `python3 $W status [--title T]`: the sessions of a watchdog title (id, pid, name, context %, last activity);
   exit 3 on 2 live sessions of one title. `--check-files <files>` lists stale ids in prompt or memory files (no edit).
-- **New watchdog:** `$R new --title T --model <m> --rex <rex session> --label <label> [--prompt-file <prompt>]`. It
-  refuses while T runs.
+- **New watchdog:** `python3 $W new --title T --model <m> [--prompt-file <prompt>] --frontend rex`. It refuses
+  while T runs.
 - **Restore** (after Ctrl-C, an upgrade, a crash; the owner asks "restore the watchdog"):
-  `$R restore --title T --rex <rex session> --label <label>`. It refuses while the old session runs or was active in
+  `python3 $W restore --title T --frontend rex`. It refuses while the old session runs or was active in
   the last 2 minutes. At level `handoff` or `over` the output has a WARNING: do not resume; hand off from a new
   session instead. The resumed session sets its crons, wake-ups and background processes again.
 

@@ -35,7 +35,7 @@ Run in a session whose folder is the project, on the machine where the watchdog 
    `$W public <project dir>`: if `public`, write session titles and ids only: no employer, client or work names, no hostnames,
    no IPs, no emails. Show the owner the text and wait for his approval.
 5. **Commit** the two files only on the owner's word; push only on the owner's word.
-6. **Start.** In Rex (no Desktop tools): `"$PROJECT/.claude/skills/handoff-session-context/scripts/rex-watchdog.sh new" --title "<title>" --model <model> --rex <rex session> --label <label> --prompt-file <project part>` (skill handoff-session-context: the title gets the short id, the Fable rule and the duplicate check are in it). The Desktop path below stays as the fallback.
+6. **Start.** In Rex (no Desktop tools): `python3 "$PROJECT/.claude/skills/handoff-session-context/scripts/watchdog.py" new --title "<title>" --model <model> --prompt-file <project part> --frontend rex` (skill handoff-session-context: the title gets the short id; the window `<role> #<short id>` opens in the Rex session named after the project folder; the Fable rule and the duplicate check are in it). The Desktop path below stays as the fallback.
    Desktop: `$W start-line <project dir> <model>` (exit 2 = Fable without the owner's word: ask him). Then `start_session`:
    `initiation: "user_asked"`, `context: "fresh"`, `cwd` = the project folder, `use_worktree: false` (the project folder itself),
    `model` = the model, `title` = the printed title, `prompt` = the printed start line, `background` = one paragraph on the

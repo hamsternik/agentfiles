@@ -37,8 +37,9 @@ check "SKILL.md has no fixed install path"      lacks "$skill/SKILL.md" '[~]/.cl
 check "SKILL.md marks the hand-off done"        holds "$skill/SKILL.md" "mark-done"
 # shellcheck disable=SC2016
 check "SKILL.md sets W to watchdog.py"          holds "$skill/SKILL.md" 'W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py'
-# shellcheck disable=SC2016
-check "SKILL.md sets R to rex-watchdog.sh"      holds "$skill/SKILL.md" 'R=${CLAUDE_SKILL_DIR}/scripts/rex-watchdog.sh'
+check "SKILL.md names no rex-watchdog.sh"      lacks "$skill/SKILL.md" 'rex-watchdog'
+check "SKILL.md names --frontend rex"           holds "$skill/SKILL.md" "--frontend rex"
+check "SKILL.md has no --label"                 lacks "$skill/SKILL.md" '[-][-]label'
 check "SKILL.md leaves rename to the owner"      holds "$skill/SKILL.md" "/rename"
 check "SKILL.md names the limits"               holds "$skill/SKILL.md" "40 %"
 check "template exists"                         [ -f "$skill/templates/handoff.md" ]
@@ -51,13 +52,16 @@ check "skill text has no session ids"          lacks "$skill/SKILL.md" '[0-9a-f]
 check "context.py is executable"                [ -x "$skill/scripts/context.py" ]
 check "latest.py alias is executable"           [ -x "$skill/scripts/latest.py" ]
 check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py" ]
-check "rex-watchdog.sh is executable"           [ -x "$skill/scripts/rex-watchdog.sh" ]
+check "rex-watchdog.sh is gone"                 [ ! -e "$skill/scripts/rex-watchdog.sh" ]
+check "the launchers package exists"            [ -f "$skill/scripts/launchers/__init__.py" ]
 # shellcheck disable=SC2016
-for cmd in '$R handoff' '$R retire' '$R restore' '$R new' '$R help' '$W ready' '$W status' '$W help'; do
+for cmd in '$W handoff' '$W retire' '$W restore' '$W new' '$W ready' '$W status' '$W help'; do
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
 done
 check "SKILL.md no longer uses latest.py"       lacks "$skill/SKILL.md" 'latest\.py'
-check "start-project-watchdog points to Rex"   holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "rex-watchdog.sh new"
+check "start-project-watchdog uses watchdog.py" holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "scripts/watchdog.py\" new"
+check "start-project-watchdog: --frontend rex"  holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "--frontend rex"
+check "start-project-watchdog: no wrapper"      lacks "$repo/claude/skills/start-project-watchdog/SKILL.md" 'rex-watchdog'
 
 # 3. Install step: work projects only (Nikita 2026-11-24: no work skill in ~/.claude/skills)
 setup() {

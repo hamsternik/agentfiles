@@ -464,5 +464,108 @@ class TestHelpAlias(Base):
         self.assertIn("watchdog.py restore", a.stderr)
 
 
+
+# PLAN-watchdog-launchers v6, use cases 1, 2, 25, 26 (step 2: written against the code before --frontend)
+UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+
+class TestFrontendDefault(Base):
+    """1, 2: no --frontend = terminal: print only, the same output as before, no rex call, no detection."""
+
+    def setUp(self):
+        super().setUp()
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self.rex_log = self.root / "rex.log"
+        stub = self.bin / "rex"
+        stub.write_text(f'#!/bin/sh\necho "$@" >> {self.rex_log}\necho "{{}}"\n')
+        stub.chmod(0o755)
+        self.env["PATH"] = f"{self.bin}:{os.environ['PATH']}"
+
+    def run_all(self, extra_env=None):
+        """The 4 commands; returns {command: CompletedProcess}."""
+        if extra_env:
+            self.env.update(extra_env)
+        out = {}
+        self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
+        out["restore"] = self.cli("restore", "--title", T, "--project-dir", PROJECT)
+        out["new"] = self.cli("new", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
+                              "--project-dir", PROJECT)
+        pid = self.live(OLD_ID, f"{T} #aaaaaaaa")
+        out["handoff"] = self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT)
+        self.live(NEW_ID, f"{T} #bbbbbbbb")
+        self.assertEqual(self.cli("ready", "--session", NEW_ID).returncode, 0)
+        out["retire"] = self.cli("retire", "--session", OLD_ID, "--caller", NEW_ID)
+        out["pid"] = pid
+        for p in self.procs:
+            p.kill()
+            p.wait()
+        self.procs.clear()
+        for f in self.sessions.glob("*.json"):
+            f.unlink()
+        return out
+
+    def check(self, out):
+        for cmd in ("restore", "new", "handoff", "retire"):
+            self.assertEqual(out[cmd].returncode, 0, f"{cmd}: {out[cmd].stderr}")
+        self.assertFalse(self.rex_log.exists(), "a rex call: " + (self.rex_log.read_text() if self.rex_log.exists() else ""))
+        # 1a restore: summary line, then the claude --resume line with the restore prompt last
+        lines = out["restore"].stdout.splitlines()
+        self.assertTrue(lines[0].startswith(f"session {OLD_ID}  last 2026-11-24T10:00:00Z  context "), lines[0])
+        argv = __import__("shlex").split(lines[-1])
+        self.assertEqual(argv[:3], ["claude", "--resume", OLD_ID])
+        self.assertEqual(argv[-1], wd.RESTORE_PROMPT)
+        # 1b new: one claude --session-id line
+        self.assertRegex(out["new"].stdout, rf"\Aclaude --session-id {UUID_RE} --model claude-opus-5-5 -n ")
+        self.assertEqual(len(out["new"].stdout.splitlines()), 1)
+        # 1c handoff: old line, then the claude line
+        h = out["handoff"].stdout.splitlines()
+        self.assertEqual(h[0], f"old {T} #aaaaaaaa (pid {out['pid']})")
+        self.assertRegex(h[1], rf"\Aclaude --session-id {UUID_RE} --model claude-opus-5-5 -n ")
+        # 1d retire: the line to type
+        self.assertEqual(out["retire"].stdout.strip(),
+                         f"retire {T} #aaaaaaaa (pid {out['pid']}): type `/rename deprecated {T} #aaaaaaaa`, "
+                         f"Enter, then `/exit`, Enter")
+
+    def test_no_frontend_prints_only(self):  # 1
+        self.check(self.run_all())
+
+    def test_rex_env_does_not_choose_the_frontend(self):  # 2
+        plain = self.run_all()
+        in_rex = self.run_all({"REX_SESSION": "session:01a2-test", "REX_BLOCK": "block:01a2-test"})
+        self.check(in_rex)
+        self.assertEqual(in_rex["restore"].stdout, plain["restore"].stdout)
+        self.assertEqual(in_rex["retire"].stdout.replace(str(in_rex["pid"]), "PID"),
+                         plain["retire"].stdout.replace(str(plain["pid"]), "PID"))
+
+
+class TestContract(Base):
+    """25, 26: the --json keys stay (plus window_label; `window` is the context size); the handoff prompt names no front-end script."""
+
+    def test_json_keys_stay_plus_window_label(self):  # 25
+        # `window` already means the context window size (tokens) in the restore JSON: the label is window_label
+        self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
+        r = json.loads(self.cli("restore", "--title", T, "--project-dir", PROJECT, "--json").stdout)
+        self.assertLessEqual({"session", "title", "argv", "warning", "older_forks", "project_dir", "window_label"}, set(r))
+        n = json.loads(self.cli("new", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
+                                "--project-dir", PROJECT, "--json").stdout)
+        self.assertLessEqual({"session", "short", "name", "argv", "project_dir", "window_label"}, set(n))
+        self.live(OLD_ID, f"{T} #aaaaaaaa")
+        h = json.loads(self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT,
+                                "--json").stdout)
+        self.assertLessEqual({"old", "new", "project_dir"}, set(h))
+        self.assertLessEqual({"session", "pid", "name"}, set(h["old"]))
+        self.assertLessEqual({"session", "short", "name", "argv", "window_label"}, set(h["new"]))
+
+    def test_handoff_prompt_names_watchdog_retire_with_the_frontend(self):  # 26
+        self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
+        self.live(OLD_ID, f"{T} #aaaaaaaa")
+        d = json.loads(self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT,
+                                "--json").stdout)
+        prompt, sid = d["new"]["argv"][-1], d["new"]["session"]
+        self.assertIn(f"watchdog.py retire --session {OLD_ID} --caller {sid} --frontend terminal", prompt)
+        self.assertNotIn("rex-watchdog.sh", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

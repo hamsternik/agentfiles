@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# rex-watchdog.sh (watchdog CLI v2): the only Rex caller. A fake `rex` on PATH logs every call and simulates
-# the parts the wrapper needs (window new starts a fake claude = a sleep with a sessions/<pid>.json entry;
-# send + send-key enter apply /rename and /exit to that entry). watchdog.py runs for real on fixture folders.
-# Use cases 23-31 of the list given in chat (spec docs/local/watchdog-cli-v2-spec-20261126.md, section 8).
+# watchdog.py --frontend rex (the Rex launcher, scripts/launchers/rex.py; was rex-watchdog.sh). A fake `rex` on PATH
+# logs every call and simulates the parts the launcher needs (window new / session new start a fake claude = a sleep
+# with a sessions/<pid>.json entry; send + send-key enter apply /rename and /exit to that entry). watchdog.py runs
+# for real on fixture folders. Use cases 23-32 (docs/plans/PLAN-watchdog-launchers.md; list given in chat).
 # Run: make test   (uses /bin/bash, like a fresh Mac)
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 skill="$repo/claude/skills/handoff-session-context"
-wrapper="$skill/scripts/rex-watchdog.sh"
+wd="$skill/scripts/watchdog.py"
 fails=0
 T="proj (watchdog-master)"
 TRE="proj \(watchdog-master\)"   # T as an extended regex
@@ -83,14 +83,21 @@ PY
 #!/bin/bash
 st="$FAKE_REX_DIR"
 printf '%s\n' "$*" >> "$st/log"
+start_cmd() {  # the part of `window new` / `session new` after -c DIR ... -- : start the fake claude
+  while [ "$1" != "-c" ]; do shift; done; cwd="$2"
+  while [ "$1" != "--" ]; do shift; done; shift
+  python3 "$st/sim.py" start "$cwd" "$@"
+}
 case "$1" in
-  session) cat "$st/rex-sessions.json" ;;
+  session)
+    case "$2" in
+      ls) cat "$st/rex-sessions.json" ;;
+      new) start_cmd "$@" ;;
+    esac ;;
   window)
     case "$2" in
-      ls) cat "$st/rex-windows.json" ;;
-      new) while [ "$1" != "-c" ]; do shift; done; cwd="$2"
-           while [ "$1" != "--" ]; do shift; done; shift
-           python3 "$st/sim.py" start "$cwd" "$@" ;;
+      ls) if [ "$4" = proj ]; then cat "$st/rex-windows.json"; else echo '{"windows":[]}'; fi ;;  # $4 = -s value
+      new) start_cmd "$@" ;;
       rename) : ;;
     esac ;;
   block) pid="$(grep "^$4 " "$st/pids" | cut -d' ' -f2)"; printf '{"child":{"pid":%s,"argv0":"claude"}}\n' "${pid:-0}" ;;
@@ -99,7 +106,7 @@ case "$1" in
 esac
 SH
   chmod +x "$st/bin/rex"
-  printf '{"sessions":[{"session_id":"session:s1","label":"shelf-crawl"}]}\n' > "$st/rex-sessions.json"
+  printf '{"sessions":[{"session_id":"session:s0","label":"other"},{"session_id":"session:s1","label":"proj"}]}\n' > "$st/rex-sessions.json"
   export PATH="$st/bin:$PATH"
 }
 teardown() {
@@ -108,7 +115,7 @@ teardown() {
 }
 run() {  # run <args...>; sets $out, $rc
   local r=0
-  out="$(/bin/bash "$wrapper" "$@" 2>&1)" || r=$?
+  out="$(python3 "$wd" "$@" 2>&1)" || r=$?
   rc=$r
 }
 transcript() {  # transcript <sid> <title> <last ts>
@@ -138,17 +145,34 @@ pid_gone() { ! kill -0 "$1" 2>/dev/null; }
 
 # 23. new → rex window new with the suffixed label and the claude --session-id line, then the name wait
 setup
-run new --title "$T" --model claude-opus-5-5 --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
 check "23 new: exits 0"                         [ "$rc" = 0 ]
-check "23 new: one window new with -c and --keep-open" grep -qE "^window new -s shelf-crawl watchdog-master-[0-9a-f]{8} -c $PROJECT --keep-open -- claude --session-id [0-9a-f-]{36} --model claude-opus-5-5 -n $TRE #[0-9a-f]{8} --remote-control $TRE #" "$st/log"
-check "23 new: label suffix = name suffix"     python3 -c 'import re,sys; l=open(sys.argv[1]).read(); a=re.search(r"watchdog-master-([0-9a-f]{8})",l).group(1); b=re.search(r" #([0-9a-f]{8}) --remote",l).group(1); c=re.search(r"--session-id ([0-9a-f]{8})",l).group(1); sys.exit(0 if a==b==c else 1)' "$st/log"
+check "23 new: one window new with -c and --keep-open" grep -qE "^window new -s proj watchdog-master #[0-9a-f]{8} -c $PROJECT --keep-open -- claude --session-id [0-9a-f-]{36} --model claude-opus-5-5 -n $TRE #[0-9a-f]{8} --remote-control $TRE #" "$st/log"
+check "23 new: label suffix = name suffix"     python3 -c 'import re,sys; l=open(sys.argv[1]).read(); a=re.search(r"watchdog-master #([0-9a-f]{8})",l).group(1); b=re.search(r" #([0-9a-f]{8}) --remote",l).group(1); c=re.search(r"--session-id ([0-9a-f]{8})",l).group(1); sys.exit(0 if a==b==c else 1)' "$st/log"
 check "23 new: reports the started name"       grep -qE "started $TRE #[0-9a-f]{8}" <<< "$out"
+teardown
+
+# 23b. --rex S overrides the project session: window new -s S, no session lookup
+setup
+run new --title "$T" --model claude-opus-5-5 --frontend rex --rex S --project-dir "$PROJECT"
+check "23b --rex: window new -s S"              grep -qE "^window new -s S watchdog-master #" "$st/log"
+check "23b --rex: no session ls"                not_logged "^session ls"
+teardown
+
+# 32. no Rex session named after the project → one session new that also starts the watchdog
+setup
+printf '{"sessions":[{"session_id":"session:s0","label":"other"}]}\n' > "$st/rex-sessions.json"
+run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
+check "32 session new: exits 0"                 [ "$rc" = 0 ]
+check "32 session new: one call with the window" grep -qE "^session new proj --window watchdog-master #[0-9a-f]{8} -c $PROJECT --keep-open -- claude --session-id " "$st/log"
+check "32 session new: no window new"           not_logged "^window new"
+check "32 session new: never in the caller's"   not_logged " -s other "
 teardown
 
 # 24. new while T is live → no Rex call, exit 2
 setup
 python3 "$st/sim.py" spawn "$OLD_ID" "$T #aaaaaaaa" "$PROJECT" > /dev/null
-run new --title "$T" --model claude-opus-5-5 --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
 check "24 new while live: exit 2"               [ "$rc" = 2 ]
 check "24 new while live: no Rex call"          [ ! -s "$st/log" ]
 teardown
@@ -156,11 +180,11 @@ teardown
 # 25. restore → rex window new with claude --resume; while live → no Rex call
 setup
 transcript "$OLD_ID" "$T #aaaaaaaa" "2026-11-24T10:00:00Z"
-run restore --title "$T" --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run restore --title "$T" --frontend rex --project-dir "$PROJECT"
 check "25 restore: exits 0"                     [ "$rc" = 0 ]
-check "25 restore: window new with --resume"    logged "window new -s shelf-crawl watchdog-master-aaaaaaaa -c $PROJECT --keep-open -- claude --resume $OLD_ID -n $T #aaaaaaaa"
+check "25 restore: window new with --resume"    logged "window new -s proj watchdog-master #aaaaaaaa -c $PROJECT --keep-open -- claude --resume $OLD_ID -n $T #aaaaaaaa"
 : > "$st/log"
-run restore --title "$T" --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run restore --title "$T" --frontend rex --project-dir "$PROJECT"
 check "25 restore while live: exit 2"           [ "$rc" = 2 ]
 check "25 restore while live: no Rex call"      [ ! -s "$st/log" ]
 teardown
@@ -169,7 +193,7 @@ teardown
 setup
 old_pid="$(python3 "$st/sim.py" spawn "$OLD_ID" "$T #aaaaaaaa" "$PROJECT")"
 transcript "$OLD_ID" "$T #aaaaaaaa" "2026-11-24T10:00:00Z"
-run handoff --title "$T" --handoff-file docs/local/h.md --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run handoff --title "$T" --handoff-file docs/local/h.md --frontend rex --project-dir "$PROJECT"
 check "26 handoff: exits 0"                     [ "$rc" = 0 ]
 check "26 handoff: window new with --session-id" grep -qE "^window new .* -- claude --session-id " "$st/log"
 check "26 handoff: no send to any pane"         not_logged "^(send|send-key) "
@@ -181,24 +205,25 @@ setup
 python3 "$st/sim.py" spawn "$OLD_ID" "$T #aaaaaaaa" "$PROJECT" > /dev/null
 python3 "$st/sim.py" spawn "$NEW_ID" "$T #bbbbbbbb" "$PROJECT" > /dev/null
 transcript "$NEW_ID" "$T #bbbbbbbb" "2026-11-25T10:00:00Z"
-run handoff --title "$T" --session "$NEW_ID" --handoff-file h.md --rex shelf-crawl --label watchdog-master --project-dir "$PROJECT"
+run handoff --title "$T" --session "$NEW_ID" --handoff-file h.md --frontend rex --project-dir "$PROJECT"
 check "26b handoff --session: exits 0"          [ "$rc" = 0 ]
 check "26b handoff --session: prompt names X"   logged "retire --session $NEW_ID"
 teardown
 
 # 27. retire without --yes → the plan only
 setup; pair ready
-run retire --session "$OLD_ID" --caller "$NEW_ID"
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex
 check "27 retire dry run: exits 0"              [ "$rc" = 0 ]
-check "27 retire dry run: prints the plan"      grep -qF "rex send -b block:B1" <<< "$out"
+check "27 retire dry run: prints the plan"      grep -qF "/rename deprecated $T #aaaaaaaa" <<< "$out"
+check "27 retire dry run: names the pane"       grep -qF "block:B1" <<< "$out"
 check "27 retire dry run: no send/rename"       not_logged "^(send|send-key|window rename) "
 teardown
 
 # 28. retire --yes → rename text, Enter, verify, /exit, Enter, pid gone, window rename archived-<label>
 setup; pair ready
-run retire --session "$OLD_ID" --caller "$NEW_ID" --yes
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "28 retire: exits 0"                      [ "$rc" = 0 ]
-check "28 retire: the order of the Rex calls"   order "send -b block:B1 /rename deprecated $T #aaaaaaaa" "send-key -b block:B1 enter" "send -b block:B1 /exit" "send-key -b block:B1 enter" "window rename -s shelf-crawl window:W1 archived-watchdog-master-aaaaaaaa"
+check "28 retire: the order of the Rex calls"   order "send -b block:B1 /rename deprecated $T #aaaaaaaa" "send-key -b block:B1 enter" "send -b block:B1 /exit" "send-key -b block:B1 enter" "window rename -s proj window:W1 archived-watchdog-master-aaaaaaaa"
 check "28 retire: the old pid is gone"          pid_gone "$old_pid"
 check "28 retire: the successor still runs"     kill -0 "$new_pid"
 teardown
@@ -206,13 +231,13 @@ teardown
 # 29. the first Enter does nothing → one more Enter, then on; never applied → stop before /exit
 setup; pair ready
 export FAKE_RENAME_ENTERS=2
-run retire --session "$OLD_ID" --caller "$NEW_ID" --yes
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "29 second Enter: exits 0"                [ "$rc" = 0 ]
 check "29 second Enter: 2 Enters before /exit"  [ "$(sed -n '/\/exit/q;p' "$st/log" | grep -c '^send-key -b block:B1 enter')" = 2 ]
 teardown
 setup; pair ready
 export FAKE_RENAME_ENTERS=99
-run retire --session "$OLD_ID" --caller "$NEW_ID" --yes
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "29 rename never applied: exit 7"         [ "$rc" = 7 ]
 check "29 rename never applied: no /exit sent"  not_logged "^send -b block:B1 /exit"
 check "29 rename never applied: old pid runs"   kill -0 "$old_pid"
@@ -221,24 +246,24 @@ teardown
 # 30. no pane has the target pid → stop, no send
 setup; pair ready
 printf 'block:B1 1\nblock:B2 %s\n' "$new_pid" > "$st/pids"
-run retire --session "$OLD_ID" --caller "$NEW_ID" --yes
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "30 pane not found: exit 9"               [ "$rc" = 9 ]
 check "30 pane not found: no send"              not_logged "^(send|send-key) "
 teardown
 
 # a failed watchdog.py check (successor not ready) → no Rex call at all
 setup; pair
-run retire --session "$OLD_ID" --caller "$NEW_ID" --yes
+run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "retire not ready: exit 2"                [ "$rc" = 2 ]
 check "retire not ready: no Rex call"           [ ! -s "$st/log" ]
 teardown
 
-# 31. help → every wrapper command
+# 31. help → every command that a front-end runs
 setup
 run help
 check "31 help: exits 0"                        [ "$rc" = 0 ]
 for c in new restore handoff retire help; do
-  check "31 help: lists $c"                     grep -qE "^  $c " <<< "$out"
+  check "31 help: lists $c"                     grep -qE "^  $c +" <<< "$out"
 done
 teardown
 

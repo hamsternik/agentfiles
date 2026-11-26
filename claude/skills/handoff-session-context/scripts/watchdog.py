@@ -2,7 +2,8 @@
 """watchdog.py — the session logic of a project watchdog (skill handoff-session-context, CLI v2).
 
 Reads the transcripts (~/.claude/projects/<slug>/), the live sessions (~/.claude/sessions/<pid>.json) and the context
-size (context.py). It decides and prints; it never calls Rex and never types keys (rex-watchdog.sh does that).
+size (context.py). It decides; it knows no front-end. `--frontend rex` hands the decision to a launcher
+(launchers/), which starts, types and renames; the default front-end, terminal, only prints.
 Run `watchdog.py help` for the subcommands. Standard library only; writes only the READY marker files.
 
 Names: fixed title T; a session's name is `T #<first 8 hex of its id>` (old sessions: plain T).
@@ -14,6 +15,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import time
 import uuid
@@ -25,24 +27,31 @@ import context  # noqa: E402
 LIVE_SECONDS = 120
 SKILL_SCRIPTS = Path(os.path.abspath(__file__)).parent  # keeps the project link path when called through it
 
-HELP = """watchdog.py — session logic of a project watchdog (no Rex; rex-watchdog.sh wraps it)
+HELP = """watchdog.py — session logic of a project watchdog; the one entry point of the watchdog CLI
 
   status   [--title T] [--wait-name NAME --timeout S] [--check-files F ...]
            the sessions of T (or of every watchdog title): id, pid, name, status, last activity, context
-  restore  --title T [--effort E]
+  restore  --title T [--effort E] [FRONT-END]
            the latest session of T and its `claude --resume` line; refused while it still runs
-  new      --title T --model M [--first-prompt TEXT | --prompt-file F] [--effort E] [--owner-said-fable]
+  new      --title T --model M [--first-prompt TEXT | --prompt-file F] [--effort E] [--owner-said-fable] [FRONT-END]
            a new session id and the `claude --session-id ... -n "T #id"` line; refused while T runs
-  handoff  --title T --handoff-file F [--session ID] [--prompt-file F] [--effort E] [--owner-said-fable]
+  handoff  --title T --handoff-file F [--session ID] [--prompt-file F] [--effort E] [--owner-said-fable] [FRONT-END]
            the successor of the live session of T (same model) and the old session's pid
   ready    --session ID
            mark a successor ready (only then may the old session be retired)
-  retire   --session ID [--caller ID] [--verify]
+  retire   --session ID [--caller ID] [--verify] [FRONT-END] [--yes]
            check that the old session may be retired; print what to type; --verify: is it retired?
+           with --frontend rex: a dry run; --yes types /rename and /exit, then renames the window archived-<label>
   help     this text
 
+FRONT-END: --frontend terminal|rex [--rex S]. terminal (the default) works everywhere: it only prints, as above.
+  rex starts the window (restore, new, handoff) or types into the pane (retire) through Rex, from a Rex pane or a
+  plain terminal. The Rex session is the one labelled with the project folder name (made when missing); --rex S
+  overrides it. The window label is always `<role> #<short id>`, the role from the title: no --label option.
 Common options: --project-dir DIR (default: $CLAUDE_PROJECT_DIR, else the project above the cwd), --json.
-Exit codes: 0 ok, 1 no session, 2 refused, 3 duplicates, 4 Fable without the owner's word, 5 timeout, 6 not yet.
+Exit codes: 0 ok, 1 no session, 2 refused, 3 duplicates, 4 Fable without the owner's word, 5 timeout, 6 not yet,
+  7 rename not seen, 8 the old process did not exit, 9 no pane has the pid, 64 usage; a failed rex call: its code.
+Env: WATCHDOG_WAIT (s, 60: name wait), WATCHDOG_VERIFY (tries, 10: rename check), WATCHDOG_EXIT_WAIT (s, 30).
 """
 
 SUFFIX = re.compile(r" #[0-9a-f]{8}$")
@@ -66,6 +75,17 @@ def name_for(title, session):
 
 def label_for(label, session):
     return f"{label}-{session[:8]}"
+
+
+ROLE = re.compile(r"\(([^()]*)\)")
+
+
+def window_label_for(title, session):
+    """The window label of a watchdog: `<role> #<short id>`; the role is the text in the last ( ... ) of the title
+    (the project name is left out: the front-end's session already has it), else the whole base title."""
+    base = base_title(title).strip()
+    roles = [r.strip() for r in ROLE.findall(base) if r.strip()]
+    return f"{roles[-1] if roles else base} #{session[:8]}"
 
 
 # ---- places --------------------------------------------------------------------------------------------------------
@@ -277,7 +297,8 @@ def new_plan(title, model, first_prompt="", effort=None, session=None):
     if effort:
         argv += ["--effort", effort]
     prompt = (first_prompt.strip() + _tail(session)).strip()
-    return {"session": session, "short": session[:8], "name": name, "argv": argv + [prompt]}
+    return {"session": session, "short": session[:8], "name": name, "argv": argv + [prompt],
+            "window_label": window_label_for(title, session)}
 
 
 def _fable_refused(model, said):
@@ -291,6 +312,9 @@ def live_of_title(title):
 # ---- subcommands ---------------------------------------------------------------------------------------------------
 
 def _out(a, data, text):
+    a.decision = data
+    if getattr(a, "frontend", "terminal") != "terminal" and not a.json:
+        return  # the launcher steps print their own lines
     print(json.dumps(data) if a.json else text)
 
 
@@ -348,9 +372,12 @@ def cmd_restore(a):
         text.append("older forks: " + ", ".join(f["session"] for f in forks))
     if warn:
         text.append(warn)
+        if getattr(a, "frontend", "terminal") != "terminal":
+            print(warn, file=sys.stderr)
     text.append(" ".join(shlex.quote(x) for x in argv))
     _out(a, {**best, "older_forks": [f["session"] for f in forks], "argv": argv, "warning": warn,
-             "project_dir": a.project_dir}, "\n".join(text))
+             "project_dir": a.project_dir, "window_label": window_label_for(best["title"], best["session"])},
+         "\n".join(text))
     return 0
 
 
@@ -392,8 +419,9 @@ def cmd_handoff(a):
     prompt = (f"Read {a.handoff_file} first" + (f", then {a.prompt_file}" if a.prompt_file else "") +
               f". You continue the work of session {old.get('sessionId')} ({old.get('name')}).")
     plan = new_plan(a.title, model, prompt, a.effort, session)
-    plan["argv"][-1] += (f" Then retire the old session: {SKILL_SCRIPTS / 'rex-watchdog.sh'} retire --session "
-                         f"{old.get('sessionId')} --caller {session} (dry run first, then add --yes).")
+    plan["argv"][-1] += (f" Then retire the old session: python3 {SKILL_SCRIPTS / 'watchdog.py'} retire --session "
+                         f"{old.get('sessionId')} --caller {session} --frontend {a.frontend} (dry run first, then "
+                         f"add --yes).")
     data = {"old": {"session": old.get("sessionId"), "pid": old["pid"], "name": old.get("name")}, "new": plan,
             "project_dir": a.project_dir}
     _out(a, data, f"old {old.get('name')} (pid {old['pid']})\n" + " ".join(shlex.quote(x) for x in plan["argv"]))
@@ -411,11 +439,17 @@ def cmd_ready(a):
     return 0
 
 
+def is_retired(session):
+    """True when the session no longer runs, or runs with a `deprecated ...` name."""
+    target = {d.get("sessionId"): d for d in live_entries()}.get(session)
+    return target is None or str(target.get("name") or "").startswith("deprecated")
+
+
 def cmd_retire(a):
     entries = {d.get("sessionId"): d for d in live_entries()}
     target = entries.get(a.session)
     if a.verify:
-        if target is None or str(target.get("name") or "").startswith("deprecated"):
+        if is_retired(a.session):
             _out(a, {"session": a.session, "retired": True}, f"retired {a.session}")
             return 0
         return _err(f"session {a.session} still runs as {target.get('name')!r}", 6)
@@ -440,12 +474,55 @@ def cmd_retire(a):
     return 0
 
 
+class _Parser(argparse.ArgumentParser):
+    def error(self, message):  # a usage error is exit 64 (2 is "refused")
+        self.print_usage(sys.stderr)
+        self.exit(64, f"{self.prog}: error: {message}\n")
+
+
+def _frontend(p, retire=False):
+    p.add_argument("--frontend", choices=("terminal", "rex"), default="terminal")
+    p.add_argument("--rex", help="the Rex session for the window (default: the one named after the project folder)")
+    if retire:
+        p.add_argument("--yes", action="store_true", help="with a front-end that types: act, not a dry run")
+
+
+def _env_num(name, default):
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+
+def _launch(a):
+    """Run the decision of a.cmd (a.decision) through the launcher of a.frontend."""
+    import launchers
+    from launchers import steps
+    from launchers.rex import RexError
+    launcher = launchers.get(a.frontend, session=a.rex)
+    d = a.decision
+    wait = _env_num("WATCHDOG_WAIT", 60)
+    try:
+        if a.cmd == "new":
+            return steps.start(launcher, d, d["name"], wait_name, wait)
+        if a.cmd == "restore":
+            return steps.start(launcher, d, d["title"], wait_name, wait)
+        if a.cmd == "handoff":
+            plan = {**d["new"], "project_dir": d["project_dir"]}
+            return steps.start(launcher, plan, plan["name"], wait_name, wait)
+        return steps.retire(launcher, d, a.yes, verified=lambda: is_retired(a.session), alive=_alive,
+                            verify_tries=int(_env_num("WATCHDOG_VERIFY", 10)),
+                            exit_wait=_env_num("WATCHDOG_EXIT_WAIT", 30))
+    except RexError as e:
+        return _err(str(e), e.code)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(HELP, end="")
         return 0
-    ap = argparse.ArgumentParser(prog="watchdog.py", add_help=False)
+    ap = _Parser(prog="watchdog.py", add_help=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def add(name, **kw):
@@ -462,6 +539,7 @@ def main(argv=None):
     p = add("restore")
     p.add_argument("--title", required=True)
     p.add_argument("--effort")
+    _frontend(p)
     p = add("new")
     p.add_argument("--title", required=True)
     p.add_argument("--model", required=True)
@@ -470,6 +548,7 @@ def main(argv=None):
     g.add_argument("--prompt-file")
     p.add_argument("--effort")
     p.add_argument("--owner-said-fable", action="store_true")
+    _frontend(p)
     p = add("handoff")
     p.add_argument("--title", required=True)
     p.add_argument("--handoff-file", required=True)
@@ -477,16 +556,24 @@ def main(argv=None):
     p.add_argument("--prompt-file")
     p.add_argument("--effort")
     p.add_argument("--owner-said-fable", action="store_true")
+    _frontend(p)
     p = add("ready")
     p.add_argument("--session")
     p = add("retire")
     p.add_argument("--session", required=True)
     p.add_argument("--caller")
     p.add_argument("--verify", action="store_true")
+    _frontend(p, retire=True)
     a = ap.parse_args(argv)
     a.project_dir = a.project_dir or default_project_dir()
-    return {"status": cmd_status, "restore": cmd_restore, "new": cmd_new, "handoff": cmd_handoff,
+    frontend = getattr(a, "frontend", "terminal")
+    if frontend == "rex" and not shutil.which("rex"):
+        return _err("--frontend rex: no `rex` command on PATH (install Rex, or use --frontend terminal)", 64)
+    code = {"status": cmd_status, "restore": cmd_restore, "new": cmd_new, "handoff": cmd_handoff,
             "ready": cmd_ready, "retire": cmd_retire}[a.cmd](a)
+    if code != 0 or frontend == "terminal" or getattr(a, "verify", False):
+        return code
+    return _launch(a)
 
 
 if __name__ == "__main__":
