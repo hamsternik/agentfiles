@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of the launcher layer (docs/plans/PLAN-watchdog-launchers.md v6, use cases 3-24; step 3: written before
+"""Tests of the launcher layer (docs/plans/PLAN-watchdog-launchers.md v6, use cases 3-23 (24, the terminal launcher, removed 2026-11-26: KISS); step 3: written before
 scripts/launchers/ exists). The numbered use cases were given in chat before this file."""
 import json
 import os
@@ -263,24 +263,6 @@ class TestRexLauncher(unittest.TestCase):
         r.rename_window(pane, "archived-" + pane.label)
         self.assertEqual(fake.calls[-1], ["window", "rename", "-s", "proj", "window:2",
                                           "archived-watchdog-master #de18597a"])
-
-
-# ---- terminal launcher --------------------------------------------------------------------------------------------
-
-class TestTerminalLauncher(unittest.TestCase):
-    def test_start_prints_a_pasteable_line(self):  # 24
-        import io
-        out = io.StringIO()
-        t = launchers().get("terminal", out=out)
-        p = plan(argv=("claude", "--resume", OLD_ID, "-n", T, "it's `quoted` & $HOME; done"),
-                 project_dir="/home/u/my proj")
-        t.start(p)
-        line = out.getvalue().strip()
-        self.assertEqual(len(line.splitlines()), 1)
-        cd, cmd = line.split(" && ", 1)
-        self.assertEqual(shlex.split(cd), ["cd", "/home/u/my proj"])
-        self.assertEqual(shlex.split(cmd), p["argv"])
-        self.assertEqual(set(t.caps), set())
 
 
 # ---- orchestration with a fake launcher ---------------------------------------------------------------------------

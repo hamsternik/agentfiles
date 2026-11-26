@@ -1,15 +1,15 @@
 """Front-end launchers of the watchdog CLI (docs/plans/PLAN-watchdog-launchers.md, v6).
 
 watchdog.py decides; a launcher only starts, finds, types into and renames sessions of one front-end. A launcher has
-`name`, `caps` (the operations that really act) and the 4 operations of `Launcher`. When a capability is missing,
-the caller prints the step for the owner (launchers/steps.py). Standard library only. No CLI: watchdog.py is the one
-entry point.
+`name`, `caps` (the operations that really act) and the operations of `Launcher`. When a capability is missing,
+the caller prints the step for the owner (launchers/steps.py). The default front-end, terminal, has no launcher:
+watchdog.py prints its decision. Standard library only. No CLI: watchdog.py is the one entry point.
 """
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
 CAPS = frozenset({"start", "find_pane", "send", "rename", "find_ended"})
-NAMES = ("terminal", "rex")
+NAMES = ("rex",)
 
 
 @dataclass(frozen=True)
@@ -48,10 +48,7 @@ class Launcher(Protocol):
 
 
 def get(name, **opts):
-    """The launcher of a front-end. Options: terminal(out=stream), rex(session=label or id, run=callable)."""
-    if name == "terminal":
-        from .terminal import Terminal
-        return Terminal(**opts)
+    """The launcher of a front-end that acts. Options: rex(session=label or id, run=callable)."""
     if name == "rex":
         from .rex import Rex
         return Rex(**opts)
