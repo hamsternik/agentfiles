@@ -212,7 +212,7 @@ Changes found during the build (each one also changed in the text above):
 - With no `--frontend`, the commands print the decision text as before; `Terminal.start` (`cd DIR && claude …`) is
   not used by the CLI. `--json` with `--frontend rex` prints the JSON and also acts.
 
-Tests: 105 Python tests (test_watchdog 50, test_context 33, test_launchers 22), `make test` (45 checks in
+Tests: 109 Python tests (test_watchdog 50, test_context 33, test_launchers 26), `make test` (47 checks in
 watchdog-frontend-rex), `make lint` clean.
 
 Live check on the master (one Haiku test session `shelf-crawl (watchdog-livecheck)`, no second child session: the
@@ -224,11 +224,16 @@ bulk-job rule):
 3. `restore` with no `--frontend` → printed the line, started nothing; the line, pasted into `zsh -lc`, resumed the
    session with the prompt.
 4. `retire --frontend rex --yes` with no successor → exit 2, no Rex call.
-Not run live: `handoff --frontend rex` + `retire --yes` (a second child session = a bulk job; covered by use cases
-14-20, 26 and the shell test 26-30).
+5. (owner's approval of 2 child sessions, 2026-11-26) `new` A, then `handoff --frontend rex --session A` → successor B
+   in `watchdog-livecheck2 #56c018ca`; B ran `ready`, `watchdog.py retire … --frontend rex` (dry run), then `--yes`:
+   A renamed `deprecated …`, pid 64008 ended, window `archived-watchdog-livecheck2 #554f3d0c`; `retire --verify` → 0.
+6. After the fix below: B exited, `restore --frontend rex` → `archived the ended window 'watchdog-livecheck2
+   #56c018ca'`, then the new window: one window with the label.
 
 Follow-ups (not in this plan):
-- `restore` leaves the old window of the exited session open (`--keep-open`) with the same label: 2 windows with one
-  label in the Rex session. `retire` finds panes by pid, so it still works.
+- Done (2026-11-26): `restore` left the old window of the exited session open (`--keep-open`) with the same label.
+  Now `restore --frontend rex` first renames each ended window of the session (`old_window_label`: the new label or the
+  old `<label>-<short id>`; never an `archived-…` one; never a window with a live process) to `archived-<label>`
+  (`find_ended` capability; tests D1, A1-A4, R1-R2, shell 25b).
 - The slave did not answer ssh at the build: its live sessions were not checked for the old `rex-watchdog.sh retire`
   text before its next `git pull`.
