@@ -100,12 +100,15 @@ case "$1" in
       new) start_cmd "$@" ;;
       rename) : ;;
     esac ;;
-  block) pid="$(grep "^$4 " "$st/pids" | cut -d' ' -f2)"; printf '{"child":{"pid":%s,"argv0":"claude"}}\n' "${pid:-0}" ;;
+  block) pid="$(grep "^$4 " "$st/pids" | cut -d' ' -f2)"
+         if [ -n "$pid" ]; then printf '{"child":{"pid":%s,"argv0":"claude"}}\n' "$pid"
+         else printf '{"last_exit":{"exit_code":0}}\n'; fi ;;  # an ended pane: no child
   send) printf '%s' "$4" > "$st/pending-$3" ;;
   send-key) python3 "$st/sim.py" enter "$3" ;;
 esac
 SH
   chmod +x "$st/bin/rex"
+  printf '{"windows":[]}\n' > "$st/rex-windows.json"  # a session with no windows (pair and 25b write their own)
   printf '{"sessions":[{"session_id":"session:s0","label":"other"},{"session_id":"session:s1","label":"proj"}]}\n' > "$st/rex-sessions.json"
   export PATH="$st/bin:$PATH"
 }
@@ -187,6 +190,17 @@ check "25 restore: window new with --resume"    logged "window new -s proj watch
 run restore --title "$T" --frontend rex --project-dir "$PROJECT"
 check "25 restore while live: exit 2"           [ "$rc" = 2 ]
 check "25 restore while live: no Rex call"      [ ! -s "$st/log" ]
+teardown
+
+# 25b. restore with an ended window of the same label in proj → that window is archived before the new one starts
+setup
+transcript "$OLD_ID" "$T #aaaaaaaa" "2026-11-24T10:00:00Z"
+cat > "$st/rex-windows.json" <<JSON
+{"windows":[{"window_id":"window:W9","label":"watchdog-master #aaaaaaaa","layers":[{"blocks":[{"block_id":"block:B9"}]}]}]}
+JSON
+run restore --title "$T" --frontend rex --project-dir "$PROJECT"
+check "25b restore: exits 0"                    [ "$rc" = 0 ]
+check "25b restore: archives the ended window first" order "window rename -s proj window:W9 archived-watchdog-master #aaaaaaaa" "window new -s proj watchdog-master #aaaaaaaa"
 teardown
 
 # 26. handoff → starts the successor; nothing is sent to the old pane

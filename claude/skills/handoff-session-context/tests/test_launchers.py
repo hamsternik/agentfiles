@@ -154,6 +154,19 @@ class TestNames(Base):
         self.assertEqual(n["window_label"], f"watchdog-master #{n['session'][:8]}")
 
 
+class TestOldWindowLabel(unittest.TestCase):
+    SID = "b7e63c93-6629-4a87-a274-8760e70bb5f0"
+
+    def test_old_window_label(self):  # D1
+        title = "proj (watchdog-master) #b7e63c93"
+        for label in ("watchdog-master #b7e63c93", "watchdog-master-b7e63c93"):
+            self.assertTrue(wd.old_window_label(label, title, self.SID), label)
+        for label in ("watchdog-master #aaaaaaaa", "watchdog-slave #b7e63c93", "watchdog-master", "b7e63c93",
+                      "archived-watchdog-master #b7e63c93x",
+                      "archived-watchdog-master-b7e63c93"):
+            self.assertFalse(wd.old_window_label(label, title, self.SID), label)
+
+
 # ---- rex launcher with a recording run ----------------------------------------------------------------------------
 
 class FakeRex:
@@ -176,7 +189,7 @@ class FakeRex:
                                            for wid, label, blocks in self.windows.get(s, [])]})
         if args[:2] == ["block", "call"]:
             b = args[args.index("-b") + 1]
-            return json.dumps({"child": {"pid": self.pids[b]}} if b in self.pids else {})
+            return json.dumps({"child": {"pid": self.pids[b]}} if b in self.pids else {"last_exit": {"exit_code": 0}})
         return "{}"
 
 
@@ -225,6 +238,22 @@ class TestRexLauncher(unittest.TestCase):
         self.assertEqual((pane.session, pane.window, pane.block), ("proj", "window:2", "block:3"))
         self.assertIsNone(self.rex(fake).find_pane(999))
 
+    def test_find_ended(self):  # R1, R2
+        fake = FakeRex(sessions=("other", "proj"),
+                       windows={"proj": [("window:1", LABEL, ["block:1"]),             # ended, same label
+                                         ("window:2", "watchdog-master-aaaaaaaa", ["block:2"]),  # ended, old style
+                                         ("window:3", LABEL, ["block:3"]),             # same label, live
+                                         ("window:4", "other #aaaaaaaa", ["block:4"])],  # ended, no match
+                                "other": [("window:5", LABEL, ["block:5"])]},
+                       pids={"block:3": 4242})
+        match = lambda label: label in (LABEL, "watchdog-master-aaaaaaaa")  # noqa: E731
+        panes = self.rex(fake).find_ended(plan(), match)
+        self.assertEqual([(p.session, p.window, p.label) for p in panes],
+                         [("proj", "window:1", LABEL), ("proj", "window:2", "watchdog-master-aaaaaaaa")])
+        self.assertNotIn(["window", "ls", "-s", "other", "--json"], fake.calls)
+        fake2 = FakeRex(windows={"S": [("window:7", LABEL, ["block:7"])]})
+        self.assertEqual([p.window for p in self.rex(fake2, session="S").find_ended(plan(), match)], ["window:7"])
+
     def test_label_with_space_and_hash(self):  # 23
         fake = FakeRex(windows={"proj": [("window:2", "watchdog-master #de18597a", ["block:2"])]},
                        pids={"block:2": 77})
@@ -259,9 +288,11 @@ class TestTerminalLauncher(unittest.TestCase):
 class FakeLauncher:
     name = "fake"
 
-    def __init__(self, caps=("start", "find_pane", "send", "rename"), pane=True, events=None):
+    def __init__(self, caps=("start", "find_pane", "send", "rename", "find_ended"), pane=True, events=None,
+                 windows=()):
         self.caps = frozenset(caps)
         self.events = [] if events is None else events
+        self.windows = windows  # (label, ended) pairs in the target session
         self.pane = launchers().Pane(session="proj", window="window:2", label=LABEL, block="block:2") if pane else None
 
     def start(self, p):
@@ -271,6 +302,11 @@ class FakeLauncher:
     def find_pane(self, pid):
         self.events.append(("find_pane", pid))
         return self.pane
+
+    def find_ended(self, p, match):
+        self.events.append(("find_ended",))
+        return [launchers().Pane(session="proj", window=f"window:{i}", label=label, block=f"block:{i}")
+                for i, (label, ended) in enumerate(self.windows) if ended and match(label)]
 
     def send_line(self, pane, text):
         self.events.append(("send", text))
@@ -315,6 +351,28 @@ class TestSteps(Base):
         self.assertEqual(fake.events, [("start", p)])
         self.assertEqual(fake.events[0][1]["argv"][-1], wd.RESTORE_PROMPT)
         self.assertEqual(waited, [p["title"]])
+
+    def start_restore(self, fake):
+        import io
+        p = plan(argv=("claude", "--resume", OLD_ID, "-n", f"{T} #aaaaaaaa", "the prompt"))
+        p["title"] = f"{T} #aaaaaaaa"
+        code = steps().start(fake, p, p["title"], wait_name=lambda n, t: True, timeout=1, out=io.StringIO(),
+                             match=lambda label: wd.old_window_label(label, p["title"], OLD_ID))
+        return code, [e for e in fake.events if e[0] in ("rename", "start")]
+
+    def test_restore_archives_the_ended_window_first(self):  # A1, A2, A3
+        fake = FakeLauncher(windows=[(LABEL, True), ("watchdog-master-aaaaaaaa", True), (LABEL, False),
+                                     ("watchdog-master #bbbbbbbb", True)])
+        code, ev = self.start_restore(fake)
+        self.assertEqual(code, 0)
+        self.assertEqual([e[0] for e in ev], ["rename", "rename", "start"])
+        self.assertEqual([e[1] for e in ev[:2]], [f"archived-{LABEL}", "archived-watchdog-master-aaaaaaaa"])
+
+    def test_no_find_ended_cap_no_call(self):  # A4
+        fake = FakeLauncher(caps=("start",), windows=[(LABEL, True)])
+        code, ev = self.start_restore(fake)
+        self.assertEqual(code, 0)
+        self.assertEqual([e[0] for e in fake.events], ["start"])
 
     def test_retire_order(self):  # 15
         fake = FakeLauncher()

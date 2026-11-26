@@ -88,6 +88,15 @@ def window_label_for(title, session):
     return f"{roles[-1] if roles else base} #{session[:8]}"
 
 
+def old_window_label(label, title, session):
+    """True when a window label belongs to this session: the label of window_label_for, or the old style
+    `<label>-<short id>` (before 2026-11-26). An `archived-...` label never matches."""
+    label = label or ""
+    if label.startswith("archived-"):
+        return False
+    return label == window_label_for(title, session) or label.endswith(f"-{session[:8]}")
+
+
 # ---- places --------------------------------------------------------------------------------------------------------
 
 def default_project_dir(env=os.environ, cwd=None, projects=None):
@@ -505,8 +514,9 @@ def _launch(a):
     try:
         if a.cmd == "new":
             return steps.start(launcher, d, d["name"], wait_name, wait)
-        if a.cmd == "restore":
-            return steps.start(launcher, d, d["title"], wait_name, wait)
+        if a.cmd == "restore":  # first archive the ended window of the same session (Rex keeps it open)
+            return steps.start(launcher, d, d["title"], wait_name, wait,
+                               match=lambda label: old_window_label(label, d["title"], d["session"]))
         if a.cmd == "handoff":
             plan = {**d["new"], "project_dir": d["project_dir"]}
             return steps.start(launcher, plan, plan["name"], wait_name, wait)

@@ -8,7 +8,7 @@ entry point.
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-CAPS = frozenset({"start", "find_pane", "send", "rename"})
+CAPS = frozenset({"start", "find_pane", "send", "rename", "find_ended"})
 NAMES = ("terminal", "rex")
 
 
@@ -35,6 +35,10 @@ class Launcher(Protocol):
 
     def find_pane(self, pid: int) -> Optional[Pane]:
         """The pane whose process has this pid, or None."""
+
+    def find_ended(self, plan: dict, match) -> list:
+        """The windows in the session that plan would start in, whose label match(label) accepts and whose
+        processes have all ended (one Pane per window)."""
 
     def send_line(self, pane: Pane, text: str) -> None:
         """Type the text (may be empty) and press Return."""

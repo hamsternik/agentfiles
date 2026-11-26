@@ -40,14 +40,35 @@ class Rex:
     def start(self, plan):
         label, cwd = plan["window_label"], plan["project_dir"]
         tail = ["-c", cwd, "--keep-open", "--", *plan["argv"]]  # the prompt stays the last item, after `--`
-        session = self.session
-        if not session:
-            session = os.path.basename(cwd.rstrip("/"))
+        session = self._target_session(plan)
+        if not self.session:
             if session not in self._session_labels():
                 self.run(["session", "new", session, "--window", label, *tail])
                 return Started(where=session, window_label=label)
         self.run(["window", "new", "-s", session, label, *tail])
         return Started(where=session, window_label=label)
+
+    def _target_session(self, plan):
+        return self.session or os.path.basename(plan["project_dir"].rstrip("/"))
+
+    def find_ended(self, plan, match):
+        session = self._target_session(plan)
+        if not self.session and session not in self._session_labels():
+            return []
+        found = []
+        for w in json.loads(self.run(["window", "ls", "-s", session, "--json"]) or "{}").get("windows", []):
+            if not match(w.get("label", "")):
+                continue
+            blocks = [b["block_id"] for layer in w.get("layers", []) for b in layer.get("blocks", [])]
+            if blocks and all(self._ended(b) for b in blocks):
+                found.append(Pane(session=session, window=w["window_id"], label=w.get("label", ""), block=blocks[0]))
+        return found
+
+    def _ended(self, block):
+        try:
+            return "child" not in json.loads(self.run(["block", "call", "-b", block, "process"]))
+        except (TypeError, ValueError, RexError):
+            return False  # unknown: never rename it
 
     def find_pane(self, pid):
         for session in ([self.session] if self.session else self._session_labels()):

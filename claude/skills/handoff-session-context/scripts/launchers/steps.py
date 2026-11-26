@@ -9,9 +9,15 @@ import time
 NEEDED_TO_RETIRE = frozenset({"find_pane", "send", "rename"})
 
 
-def start(launcher, plan, name, wait_name, timeout=60, out=None, err=None):
-    """Start plan through the launcher; when it really starts a session, wait until a live session has `name`."""
+def start(launcher, plan, name, wait_name, timeout=60, out=None, err=None, match=None):
+    """Start plan through the launcher; when it really starts a session, wait until a live session has `name`.
+    match(label): the labels of this session's old windows; an ended one is renamed archived-<label> first, so the
+    new window is the only one with its label."""
     out, err = out or sys.stdout, err or sys.stderr
+    if match is not None and "find_ended" in launcher.caps:
+        for pane in launcher.find_ended(plan, match):
+            launcher.rename_window(pane, f"archived-{pane.label}")
+            print(f"archived the ended window {pane.label!r} ({pane.window})", file=out)
     started = launcher.start(plan)
     if "start" not in launcher.caps:
         return 0
