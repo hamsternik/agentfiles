@@ -102,7 +102,7 @@ for file in roles/master/steps/70-watchdog.sh roles/slave/steps/87-watchdog.sh; 
   check "$file: a foreign skill folder is left alone"  [ ! -L "$tmp/work/foreign/.claude/skills/handoff-session-context" ]
   check "$file: no user-level skill link"              [ ! -e "$tmp/home/.claude/skills/handoff-session-context" ]
   check "$file: user settings keep the model"          [ "$(statusline_of model)" = opus ]
-  check "$file: adds the minimal statusline"           [ "$(statusline_of statusLine.command)" = "python3 \"$repo/claude/skills/handoff-session-context/scripts/context.py\" statusline" ]
+  check "$file: adds the minimal statusline"           [ "$(statusline_of statusLine.command)" = "sh \"$repo/claude/statusline.sh\"" ]
   check "$file: no statusline manual step"             lacks "$tmp/af/state/manual-steps.md" "statusline"
   step "$file"
   check "$file: a second run exits 0"                  [ "$rc" = 0 ]

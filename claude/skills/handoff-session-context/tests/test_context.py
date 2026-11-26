@@ -244,7 +244,7 @@ class TestStatusline(Tmp):
 
 
 class TestInstallStatusline(Tmp):
-    CMD = 'python3 "/x/context.py" statusline'
+    CMD = 'sh "/x/claude/statusline.sh"'
 
     def test_creates_the_file_when_missing(self):
         s = self.tmp / "settings.json"
@@ -263,13 +263,13 @@ class TestInstallStatusline(Tmp):
 
     def test_a_new_clone_path_updates_our_line(self):
         s = self.tmp / "settings.json"
-        context.install_statusline(s, 'python3 "/old/context.py" statusline')
+        context.install_statusline(s, 'sh "/old/clone/claude/statusline.sh"')
         self.assertEqual(context.install_statusline(s, self.CMD), "updated")
         self.assertEqual(json.loads(s.read_text())["statusLine"]["command"], self.CMD)
 
     def test_leaves_a_foreign_statusline_alone(self):
         s = self.tmp / "settings.json"
-        s.write_text(json.dumps({"statusLine": {"type": "command", "command": "sh mine.sh"}}))
+        s.write_text(json.dumps({"statusLine": {"type": "command", "command": "sh ~/.claude/statusline-command.sh"}}))
         text = s.read_text()
         self.assertEqual(context.install_statusline(s, self.CMD), "foreign")
         self.assertEqual(s.read_text(), text)

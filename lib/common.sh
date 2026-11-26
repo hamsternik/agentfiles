@@ -241,13 +241,13 @@ install_work_skills() {
   done
 }
 
-# install_statusline: the minimal statusline for watchdogs (model, short session id,
+# install_statusline: claude/statusline.sh (directory, model, short session id,
 # context %, HAND OFF / OVER) in ~/.claude/settings.json; it also records the window
-# size for handoff-session-context. A statusline of the owner's own is left alone.
+# size for handoff-session-context. A statusline of another script is left alone.
 install_statusline() {
   local ctx="$AF_ROOT/claude/skills/handoff-session-context/scripts/context.py"
   local settings="$HOME/.claude/settings.json" cmd result
-  cmd="python3 \"$ctx\" statusline"
+  cmd="sh \"$AF_ROOT/claude/statusline.sh\""
   if [[ "$AF_DRY_RUN" == 1 ]]; then
     printf '   [dry-run] %s install-statusline --settings %s\n' "$ctx" "$settings" >&2
     return 0

@@ -21,6 +21,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -225,12 +226,18 @@ def statusline(stdin_text, env, cache):
         return ""
 
 
-STATUSLINE_MARK = "context.py\" statusline"
+def _script_name(command):
+    """The file name of the last word of a statusline command: sh "/a/claude/statusline.sh" -> statusline.sh."""
+    try:
+        words = shlex.split(command or "")
+    except ValueError:
+        return ""
+    return Path(words[-1]).name if words else ""
 
 
 def install_statusline(settings, command, today=None):
     """Set statusLine in a user settings.json to the minimal statusline. Returns "added", "present",
-    "updated" (ours with another clone path) or "foreign" (the owner's own: left alone).
+    "updated" (the same script file name, another clone path) or "foreign" (the owner's own: left alone).
     Backs up the old file. A file that is not valid JSON is left alone (ValueError)."""
     settings = Path(settings)
     text = settings.read_text() if settings.exists() else ""
@@ -240,7 +247,7 @@ def install_statusline(settings, command, today=None):
     old = (data.get("statusLine") or {}).get("command") if isinstance(data.get("statusLine"), dict) else None
     if old == command:
         return "present"
-    if old and STATUSLINE_MARK not in old:
+    if old and _script_name(old) != _script_name(command):
         return "foreign"
     result = "updated" if old else "added"
     if text:
@@ -331,7 +338,7 @@ def main(argv=None):
     sub.add_parser("statusline")
     t = sub.add_parser("install-statusline")
     t.add_argument("--settings", required=True, help="the user settings, ~/.claude/settings.json")
-    t.add_argument("--command", required=True, help='python3 "<clone>/.../context.py" statusline')
+    t.add_argument("--command", required=True, help='sh "<clone>/claude/statusline.sh"')
     a = ap.parse_args(argv)
 
     if a.cmd == "statusline":

@@ -1,31 +1,21 @@
 #!/bin/sh
-# Claude Code status line - derived from ~/.zshrc PROMPT style
+# Claude Code status line of every machine (agentfiles). Bold green directory,
+# then in magenta what a watchdog needs: model, short session id, context %,
+# HAND OFF / OVER at the hand-off limits. It also records the window size for
+# the handoff-session-context skill. install_statusline (lib/common.sh) sets it
+# in ~/.claude/settings.json. Claude Code sends the session JSON on stdin.
 
 input=$(cat)
+here=$(cd "$(dirname "$0")" && pwd)
 
-# handoff-session-context: record the real context window (Nikita 2026-11-26)
-printf '%s' "$input" | python3 "$HOME/Developer/_hamsternik/agentfiles/claude/skills/handoff-session-context/scripts/context.py" record >/dev/null 2>&1 || true
+cwd=$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // ""' 2>/dev/null)
+info=$(printf '%s' "$input" | python3 "$here/skills/handoff-session-context/scripts/context.py" statusline 2>/dev/null)
 
-cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
-model=$(echo "$input" | jq -r '.model.display_name // ""')
-used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+# $HOME as ~ (display text, not a path to expand)
+# shellcheck disable=SC2088
+case "$cwd" in
+  "$HOME") cwd='~' ;;
+  "$HOME"/*) cwd='~/'"${cwd#"$HOME"/}" ;;
+esac
 
-# Replace $HOME with ~ in the path
-home="$HOME"
-short_cwd="${cwd#$home}"
-if [ "$short_cwd" != "$cwd" ]; then
-  short_cwd="~$short_cwd"
-fi
-
-# Build context string if available
-ctx_str=""
-if [ -n "$used" ]; then
-  ctx_str=" [ctx: ${used}%]"
-fi
-
-# Replicate zsh prompt style:
-# Bold green directory, then model info in magenta
-printf '\033[1;32m%s\033[0m \033[0;35m%s%s\033[0m' \
-  "$short_cwd" \
-  "$model" \
-  "$ctx_str"
+printf '\033[1;32m%s\033[0m \033[0;35m%s\033[0m' "$cwd" "$info"
