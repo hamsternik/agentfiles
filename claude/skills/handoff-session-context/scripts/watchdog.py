@@ -249,7 +249,7 @@ def resume_argv(s, effort=None):
         argv += ["--effort", effort]
     if s.get("permission_mode"):
         argv += ["--permission-mode", s["permission_mode"]]
-    return argv + ["--remote-control", name]
+    return argv + ["--remote-control", name, RESTORE_PROMPT]
 
 
 def _parse(ts):
@@ -259,6 +259,10 @@ def _parse(ts):
 def recently_active(last, now=None):
     now = _parse(now) if now else datetime.datetime.now(datetime.timezone.utc)
     return bool(last) and (now - _parse(last)).total_seconds() < LIVE_SECONDS
+
+
+RESTORE_PROMPT = ("You were restored with `watchdog.py restore` after an exit or a crash. Your scheduled tasks are "
+                  "gone: set your wake-ups, crons and background processes again, then continue your work.")
 
 
 def _tail(session):

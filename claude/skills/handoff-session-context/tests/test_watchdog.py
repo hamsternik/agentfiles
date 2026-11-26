@@ -256,14 +256,23 @@ class TestRestore(Base):
         self.assertEqual((best["model"], best["permission_mode"], best["tokens"], best["level"]),
                          ("claude-sonnet-5-5", "acceptEdits", 450_000, "handoff"))
 
+    # use cases 1-2: the restore prompt is the last argv item, after every flag, on both paths
     def test_resume_argv(self):
         s = {"session": "abc", "model": "claude-opus-5-5", "permission_mode": "auto", "title": f"{T} #abcabcab"}
         self.assertEqual(wd.resume_argv(s),
                          ["claude", "--resume", "abc", "-n", f"{T} #abcabcab", "--model", "claude-opus-5-5",
-                          "--permission-mode", "auto", "--remote-control", f"{T} #abcabcab"])
+                          "--permission-mode", "auto", "--remote-control", f"{T} #abcabcab", wd.RESTORE_PROMPT])
         s = {"session": "abc", "model": None, "permission_mode": None, "title": "t"}
         self.assertEqual(wd.resume_argv(s, effort="high"),
-                         ["claude", "--resume", "abc", "-n", "t", "--effort", "high", "--remote-control", "t"])
+                         ["claude", "--resume", "abc", "-n", "t", "--effort", "high", "--remote-control", "t",
+                          wd.RESTORE_PROMPT])
+
+    # use cases 3-4: the prompt restarts the schedule and does not make the session a successor
+    def test_restore_prompt_text(self):
+        p = wd.RESTORE_PROMPT
+        for word in ("wake-ups", "crons", "background processes"):
+            self.assertIn(word, p)
+        self.assertNotIn("ready", p)
 
     def test_recent_activity_guard(self):
         self.assertTrue(wd.recently_active("2026-11-26T10:00:00Z", now="2026-11-26T10:01:30Z"))
@@ -277,6 +286,7 @@ class TestRestore(Base):
         self.assertIn("WARNING", r.stdout)
         d = json.loads(self.cli("restore", "--title", T, "--project-dir", PROJECT, "--json").stdout)
         self.assertEqual(d["argv"][:3], ["claude", "--resume", OLD_ID])
+        self.assertEqual(d["argv"][-1], wd.RESTORE_PROMPT)  # use case 5: the rex wrapper reads this argv
         self.assertEqual(d["project_dir"], PROJECT)
 
     def test_live_session_exit_2(self):
