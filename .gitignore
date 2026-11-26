@@ -13,3 +13,6 @@
 .DS_Store
 **/.DS_Store
 .claude/settings.local.json
+
+# Python byte code
+__pycache__/

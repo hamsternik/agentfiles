@@ -194,3 +194,53 @@ install_watchdog_skill() {
   run mkdir -p "$skills"
   link_ours "$AF_ROOT/claude/skills/start-project-watchdog" "$skills/start-project-watchdog"
 }
+
+# Work skills: installed per work project, never in ~/.claude/skills (Nikita,
+# 2026-11-24). A work project = a git repo or worktree directly in $AF_WORK_ROOT.
+WORK_SKILLS=(handoff-session-context)
+
+# install_project_skill <skill> <project dir>: link the skill into
+# <project>/.claude/skills/, hide the link from git (.git/info/exclude, local),
+# then run the skill's own scripts/project-install.sh <project dir> if it has one.
+install_project_skill() {
+  local skill="$1" project="$2" src="$AF_ROOT/claude/skills/$1"
+  local target="$project/.claude/skills/$skill" exclude=""
+  [[ -d "$src" ]] || { warn "no such skill: $src"; return 0; }
+  run mkdir -p "$project/.claude/skills"
+  link_ours "$src" "$target"
+  [[ "$(readlink "$target" 2>/dev/null)" == "$src" || "$AF_DRY_RUN" == 1 ]] || return 0
+  # a worktree has a .git file: git names the exclude file it reads
+  exclude="$(git -C "$project" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
+  if [[ -n "$exclude" ]] && ! grep -qxF "/.claude/skills/$skill" "$exclude" 2>/dev/null; then
+    if [[ "$AF_DRY_RUN" == 1 ]]; then
+      printf '   [dry-run] add /.claude/skills/%s to %s\n' "$skill" "$exclude" >&2
+    else
+      mkdir -p "$(dirname "$exclude")"
+      printf '/.claude/skills/%s\n' "$skill" >> "$exclude"
+    fi
+  fi
+  if [[ -x "$src/scripts/project-install.sh" ]]; then
+    if [[ "$AF_DRY_RUN" == 1 ]]; then
+      printf '   [dry-run] %s %s\n' "$src/scripts/project-install.sh" "$project" >&2
+    else
+      ok "$(basename "$project"): $("$src/scripts/project-install.sh" "$project")"
+    fi
+  fi
+}
+
+# install_work_skills: every skill of WORK_SKILLS into every work project.
+install_work_skills() {
+  local root="${AF_WORK_ROOT:-$HOME/Developer/_work}" project skill
+  [[ -d "$root" ]] || { warn "no work root $root: work skills not installed"; return 0; }
+  for project in "$root"/*/; do
+    project="${project%/}"
+    [[ -e "$project/.git" ]] || continue
+    for skill in "${WORK_SKILLS[@]}"; do
+      install_project_skill "$skill" "$project"
+    done
+  done
+  # handoff-session-context: the statusline records the window size (the statusline is per machine)
+  if ! grep -qs "context.py record" "$HOME/.claude/statusline-command.sh"; then
+    manual "Hand-off skill: add to your statusline script, after input=\$(cat): printf '%s' \"\$input\" | python3 $AF_ROOT/claude/skills/handoff-session-context/scripts/context.py record"
+  fi
+}
