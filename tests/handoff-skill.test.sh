@@ -74,12 +74,15 @@ setup() {
   printf '{\n  "permissions": {"allow": ["Bash(ls)"]}\n}\n' > "$tmp/work/p2/.claude/settings.local.json"
   printf '{\n  "model": "opus"\n}\n' > "$tmp/home/.claude/settings.json"
 }
-step() {  # step <file>; sets $out, $rc
-  local r=0
-  out="$(AF_ROOT="$repo" HOME="$tmp/home" AF_HOME="$tmp/af" AF_LOCAL="$tmp/local" AF_WORK_ROOT="$tmp/work" \
-    PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v python3)")" /bin/bash "$repo/$1" 2>&1)" || r=$?
+step() {  # step <file> [VAR=value...]; sets $out, $rc
+  local r=0 f="$1"; shift
+  out="$(env "$@" AF_ROOT="$repo" HOME="$tmp/home" AF_HOME="$tmp/af" AF_LOCAL="$tmp/local" AF_WORK_ROOT="$tmp/work" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v python3)")" /bin/bash "$repo/$f" 2>&1)" || r=$?
   rc=$r
 }
+statusline_of() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("."): d=d.get(k) if isinstance(d, dict) else None
+print(d if d is not None else "")' "$tmp/home/.claude/settings.json" "$1"; }
 hooks_in() { grep -c 'handoff-session-context/scripts/context.py\\" hook' "$1" 2>/dev/null || true; }
 excluded() { grep -qxF '/.claude/skills/handoff-session-context' "$(git -C "$1" rev-parse --path-format=absolute --git-path info/exclude)"; }
 
@@ -98,12 +101,29 @@ for file in roles/master/steps/70-watchdog.sh roles/slave/steps/87-watchdog.sh; 
   check "$file: a folder with no git gets nothing"     [ ! -e "$tmp/work/notgit/.claude" ]
   check "$file: a foreign skill folder is left alone"  [ ! -L "$tmp/work/foreign/.claude/skills/handoff-session-context" ]
   check "$file: no user-level skill link"              [ ! -e "$tmp/home/.claude/skills/handoff-session-context" ]
-  check "$file: user settings.json unchanged"          [ "$(cat "$tmp/home/.claude/settings.json")" = "$(printf '{\n  "model": "opus"\n}')" ]
-  check "$file: prints the statusline line"            holds "$tmp/af/state/manual-steps.md" "context.py record"
+  check "$file: user settings keep the model"          [ "$(statusline_of model)" = opus ]
+  check "$file: adds the minimal statusline"           [ "$(statusline_of statusLine.command)" = "python3 \"$repo/claude/skills/handoff-session-context/scripts/context.py\" statusline" ]
+  check "$file: no statusline manual step"             lacks "$tmp/af/state/manual-steps.md" "statusline"
   step "$file"
   check "$file: a second run exits 0"                  [ "$rc" = 0 ]
   check "$file: a second run adds no hook"             [ "$(hooks_in "$tmp/work/p1/.claude/settings.local.json")" = 1 ]
   check "$file: a second run adds no exclude line"     [ "$(grep -c handoff-session-context "$tmp/work/p1/.git/info/exclude")" = 1 ]
+  rm -rf "$tmp"
+
+  # a statusline of the owner's own is left alone; the manual step names the record line
+  setup
+  printf '{\n  "statusLine": {"type": "command", "command": "sh mine.sh"}\n}\n' > "$tmp/home/.claude/settings.json"
+  step "$file"
+  check "$file: foreign statusline: exits 0"           [ "$rc" = 0 ]
+  check "$file: foreign statusline: left alone"        [ "$(statusline_of statusLine.command)" = "sh mine.sh" ]
+  check "$file: foreign statusline: manual step"       holds "$tmp/af/state/manual-steps.md" "context.py record"
+  rm -rf "$tmp"
+
+  # dry-run: settings.json is not touched
+  setup
+  step "$file" AF_DRY_RUN=1
+  check "$file: dry-run: settings.json unchanged"      [ "$(cat "$tmp/home/.claude/settings.json")" = "$(printf '{\n  "model": "opus"\n}')" ]
+  check "$file: dry-run: prints the statusline plan"   grep -q 'dry-run.*install-statusline' <<<"$out"
   rm -rf "$tmp"
 done
 

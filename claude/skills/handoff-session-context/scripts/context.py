@@ -6,9 +6,11 @@ Standard library only. Read-only on transcripts; writes only small files in the 
     context.py size [--session <id>] [--transcript <path>] [--cwd <dir>] [--json]
     context.py hook                                   Stop hook: hook JSON on stdin
     context.py record                                 statusline: statusline JSON on stdin, writes the window size
+    context.py statusline                             the minimal statusline: record, then print "<model> #<id> ctx <pct>%"
     context.py mark-done --session <id> --file <handoff file>
     context.py handoff-path --cwd <dir> --title "<title>"
     context.py install-hook --settings <project>/.claude/settings.local.json   add the Stop hook once (backup first)
+    context.py install-statusline --settings ~/.claude/settings.json --command "<cmd>"   set the minimal statusline
 
 Context now = input + cache write + cache read tokens of the newest main-part reply in the transcript.
 Levels: ok < HANDOFF_AT_PCT (40) <= handoff < HANDOFF_MAX_PCT (50) <= over, as a share of the model's window.
@@ -201,6 +203,57 @@ def record(stdin_text, cache):
         return
 
 
+def statusline(stdin_text, env, cache):
+    """The minimal statusline: what a watchdog needs. Records the window, returns
+    "<model> #<short id> ctx <pct>%" plus HAND OFF or OVER at the limits. Never raises."""
+    try:
+        d = json.loads(stdin_text)
+        if not isinstance(d, dict):
+            return ""
+        record(stdin_text, cache)
+        m = d.get("model")
+        model = (m.get("display_name") or m.get("id") or "") if isinstance(m, dict) else str(m or "")
+        session = str(d.get("session_id") or "")[:8]
+        used = (d.get("context_window") or {}).get("used_percentage")
+        if used is None:
+            return f"{model} #{session} ctx -"
+        pct = float(used)
+        at, top = _limits(env)
+        mark = " OVER" if pct >= top else " HAND OFF" if pct >= at else ""
+        return f"{model} #{session} ctx {pct:.0f}%{mark}"
+    except Exception:
+        return ""
+
+
+STATUSLINE_MARK = "context.py\" statusline"
+
+
+def install_statusline(settings, command, today=None):
+    """Set statusLine in a user settings.json to the minimal statusline. Returns "added", "present",
+    "updated" (ours with another clone path) or "foreign" (the owner's own: left alone).
+    Backs up the old file. A file that is not valid JSON is left alone (ValueError)."""
+    settings = Path(settings)
+    text = settings.read_text() if settings.exists() else ""
+    data = json.loads(text) if text.strip() else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{settings}: not a JSON object")
+    old = (data.get("statusLine") or {}).get("command") if isinstance(data.get("statusLine"), dict) else None
+    if old == command:
+        return "present"
+    if old and STATUSLINE_MARK not in old:
+        return "foreign"
+    result = "updated" if old else "added"
+    if text:
+        today = today or datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")
+        settings.with_name(f"{settings.name}.bak-{today}").write_text(text)
+    data["statusLine"] = {"type": "command", "command": command}
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    tmp = settings.with_name(f".{settings.name}.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(settings)
+    return result
+
+
 def mark_done(session, file, cache):
     if not _safe_id(session):
         raise ValueError(f"bad session id: {session!r}")
@@ -275,7 +328,18 @@ def main(argv=None):
     i = sub.add_parser("install-hook")
     i.add_argument("--settings", required=True, help="for example <project>/.claude/settings.local.json")
     i.add_argument("--command", default=HOOK_COMMAND)
+    sub.add_parser("statusline")
+    t = sub.add_parser("install-statusline")
+    t.add_argument("--settings", required=True, help="the user settings, ~/.claude/settings.json")
+    t.add_argument("--command", required=True, help='python3 "<clone>/.../context.py" statusline')
     a = ap.parse_args(argv)
+
+    if a.cmd == "statusline":
+        print(statusline(sys.stdin.read(), os.environ, cache_dir()))
+        return 0
+    if a.cmd == "install-statusline":
+        print(install_statusline(a.settings, a.command))
+        return 0
 
     if a.cmd == "install-hook":
         print(f"{install_hook(a.settings, command=a.command)} Stop hook in {a.settings}")

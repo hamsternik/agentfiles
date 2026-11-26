@@ -239,8 +239,26 @@ install_work_skills() {
       install_project_skill "$skill" "$project"
     done
   done
-  # handoff-session-context: the statusline records the window size (the statusline is per machine)
-  if ! grep -qs "context.py record" "$HOME/.claude/statusline-command.sh"; then
-    manual "Hand-off skill: add to your statusline script, after input=\$(cat): printf '%s' \"\$input\" | python3 $AF_ROOT/claude/skills/handoff-session-context/scripts/context.py record"
+}
+
+# install_statusline: the minimal statusline for watchdogs (model, short session id,
+# context %, HAND OFF / OVER) in ~/.claude/settings.json; it also records the window
+# size for handoff-session-context. A statusline of the owner's own is left alone.
+install_statusline() {
+  local ctx="$AF_ROOT/claude/skills/handoff-session-context/scripts/context.py"
+  local settings="$HOME/.claude/settings.json" cmd result
+  cmd="python3 \"$ctx\" statusline"
+  if [[ "$AF_DRY_RUN" == 1 ]]; then
+    printf '   [dry-run] %s install-statusline --settings %s\n' "$ctx" "$settings" >&2
+    return 0
   fi
+  result="$(python3 "$ctx" install-statusline --settings "$settings" --command "$cmd")" \
+    || { warn "statusline: $settings is not valid JSON; left alone"; return 0; }
+  case "$result" in
+    foreign)
+      if ! grep -qs "context.py record" "$HOME/.claude/statusline-command.sh"; then
+        manual "Hand-off skill: add to your statusline script, after input=\$(cat): printf '%s' \"\$input\" | python3 $ctx record"
+      fi ;;
+    *) ok "statusline $result in $settings" ;;
+  esac
 }

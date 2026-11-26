@@ -207,6 +207,87 @@ class TestRecord(Tmp):
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
 
 
+class TestStatusline(Tmp):
+    def line(self, pct, size=M, model="Opus 5.5", session="abcdef1234567890"):
+        d = {"session_id": session, "model": {"id": "claude-opus-5-5", "display_name": model},
+             "context_window": {"context_window_size": size, "used_percentage": pct}}
+        return context.statusline(json.dumps(d), self.env, self.cache)
+
+    def test_minimal_line(self):
+        self.assertEqual(self.line(12), "Opus 5.5 #abcdef12 ctx 12%")
+
+    def test_records_the_window(self):
+        self.line(12)
+        self.assertEqual(context.window_for("abcdef1234567890", None, {}, self.cache), (M, "cache"))
+
+    def test_marks_handoff_and_over(self):
+        self.assertEqual(self.line(41), "Opus 5.5 #abcdef12 ctx 41% HAND OFF")
+        self.assertEqual(self.line(50), "Opus 5.5 #abcdef12 ctx 50% OVER")
+
+    def test_limits_from_env(self):
+        self.env = {"HANDOFF_AT_PCT": "30"}
+        self.assertEqual(self.line(31), "Opus 5.5 #abcdef12 ctx 31% HAND OFF")
+
+    def test_no_percentage_yet(self):  # before the first reply Claude Code sends no used_percentage
+        self.assertEqual(self.line(None), "Opus 5.5 #abcdef12 ctx -")
+
+    def test_garbage_gives_an_empty_line(self):
+        self.assertEqual(context.statusline("garbage", self.env, self.cache), "")
+
+    def test_cli_statusline(self):
+        d = {"session_id": "s1", "model": {"display_name": "Haiku 5.5"},
+             "context_window": {"context_window_size": M, "used_percentage": 8.4}}
+        r = subprocess.run([sys.executable, str(SCRIPT), "statusline"], input=json.dumps(d), text=True,
+                           capture_output=True, env={**os.environ, "HANDOFF_CACHE_DIR": str(self.cache)})
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "Haiku 5.5 #s1 ctx 8%\n", ""))
+        self.assertTrue((self.cache / "s1.json").exists())
+
+
+class TestInstallStatusline(Tmp):
+    CMD = 'python3 "/x/context.py" statusline'
+
+    def test_creates_the_file_when_missing(self):
+        s = self.tmp / "settings.json"
+        self.assertEqual(context.install_statusline(s, self.CMD), "added")
+        self.assertEqual(json.loads(s.read_text())["statusLine"], {"type": "command", "command": self.CMD})
+
+    def test_keeps_other_content_backs_up_and_is_idempotent(self):
+        s = self.tmp / "settings.json"
+        s.write_text(json.dumps({"model": "opus"}, indent=2))
+        self.assertEqual(context.install_statusline(s, self.CMD, today="20261126"), "added")
+        self.assertEqual(json.loads((self.tmp / "settings.json.bak-20261126").read_text()), {"model": "opus"})
+        self.assertEqual(json.loads(s.read_text())["model"], "opus")
+        text = s.read_text()
+        self.assertEqual(context.install_statusline(s, self.CMD), "present")
+        self.assertEqual(s.read_text(), text)
+
+    def test_a_new_clone_path_updates_our_line(self):
+        s = self.tmp / "settings.json"
+        context.install_statusline(s, 'python3 "/old/context.py" statusline')
+        self.assertEqual(context.install_statusline(s, self.CMD), "updated")
+        self.assertEqual(json.loads(s.read_text())["statusLine"]["command"], self.CMD)
+
+    def test_leaves_a_foreign_statusline_alone(self):
+        s = self.tmp / "settings.json"
+        s.write_text(json.dumps({"statusLine": {"type": "command", "command": "sh mine.sh"}}))
+        text = s.read_text()
+        self.assertEqual(context.install_statusline(s, self.CMD), "foreign")
+        self.assertEqual(s.read_text(), text)
+
+    def test_refuses_a_broken_settings_file(self):
+        s = self.tmp / "settings.json"
+        s.write_text("{broken")
+        with self.assertRaises(ValueError):
+            context.install_statusline(s, self.CMD)
+        self.assertEqual(s.read_text(), "{broken")
+
+    def test_cli_prints_the_result(self):
+        s = self.tmp / "settings.json"
+        r = subprocess.run([sys.executable, str(SCRIPT), "install-statusline", "--settings", str(s),
+                            "--command", self.CMD], text=True, capture_output=True)
+        self.assertEqual((r.returncode, r.stdout), (0, "added\n"))
+
+
 class TestHandoffPath(Tmp):
     def test_docs_local_of_the_git_root(self):
         root = self.tmp / "repo"
