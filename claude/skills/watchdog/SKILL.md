@@ -76,8 +76,8 @@ successor retires this session (`$W retire`).
 Rules 3 and 4 of `rules.md`. The path comes from the project part (``Queue file: `<path>` ``), else
 `.claude/docs/decisions/queue.md`.
 - `python3 $W queue add --item "<question>" --default "<recommended decision>" [--scope S]`: the next id, an `open` row, one
-  Inbox item, and the wake-up line. Set that wake-up: `ScheduleWakeup` when it is in your tool list (it accepts a call outside
-  `/loop`), else the printed `CronCreate` one-shot line. For a deletion, a plan or spec, a rule text, a commit or push, or a write
+  Inbox item, and the wake-up line. Set that wake-up: `ScheduleWakeup` when it is in your tool list (it works outside `/loop`;
+  checked 2026-11-26), else the printed `CronCreate` one-shot line. For a deletion, a plan or spec, a rule text, a commit or push, or a write
   to a shared or external system: `--default "none: <why>"`.
 - `python3 $W queue list [--all] [--json]`: the open rows with their age in hours.
 - `python3 $W queue decide D<nn> "<answer>"`: the owner's answer into the row and the Inbox item.
