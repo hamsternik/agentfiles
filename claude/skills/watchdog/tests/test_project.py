@@ -164,6 +164,21 @@ class TestProjectPart(Base):
     def test_default_queue_path(self):
         self.assertEqual(project.queue_path(str(self.proj)), self.queue())
 
+    def test_fallback_to_the_root_docs_queue(self):
+        """No "Queue file:" line and no .claude/docs queue, but docs/decisions/queue.md exists: that file
+        (an older project; SM report, 2026-11-26)."""
+        q = self.proj / "docs/decisions/queue.md"
+        q.parent.mkdir(parents=True)
+        q.write_text(QUEUE)
+        self.assertEqual(project.queue_path(str(self.proj)), q)
+        self.assertEqual(self.cli("queue", "next-id").stdout.strip(), "D44")
+
+    def test_the_default_file_wins_over_the_fallback(self):
+        self.cli("init")
+        (self.proj / "docs/decisions").mkdir(parents=True)
+        (self.proj / "docs/decisions/queue.md").write_text(QUEUE)
+        self.assertEqual(project.queue_path(str(self.proj)), self.queue())
+
     def test_part_names_another_queue(self):
         self.cli("init")
         self.part().write_text(self.part().read_text().replace(

@@ -1,7 +1,8 @@
 """The project side of a watchdog: the git root, the project part, the queue path, the machines, init and public.
 
 The project part is `.claude/docs/prompts/<project>-watchdog.md` (older projects: `docs/prompts/<project>-watchdog.md`).
-It may name the queue file in a line ``Queue file: `<path>` `` (else `.claude/docs/decisions/queue.md`) and lists the
+It may name the queue file in a line ``Queue file: `<path>` `` (else `.claude/docs/decisions/queue.md`, or the older
+`docs/decisions/queue.md` when only that one exists) and lists the
 machines in its "## Machines" table. Standard library only; no CLI (watchdog.py is the one entry point).
 """
 import datetime
@@ -48,9 +49,19 @@ def _part_text(project_dir):
     return p.read_text(errors="ignore") if p.exists() else ""
 
 
+OLD_QUEUE = "docs/decisions/queue.md"
+
+
 def queue_path(project_dir):
+    """The "Queue file:" line of the project part; else the default; else (an older project) docs/decisions/queue.md
+    when only that file exists."""
+    d = Path(project_dir)
     m = QUEUE_LINE.search(_part_text(project_dir))
-    return Path(project_dir) / (m.group(1) if m else DEFAULT_QUEUE)
+    if m:
+        return d / m.group(1)
+    if not (d / DEFAULT_QUEUE).exists() and (d / OLD_QUEUE).exists():
+        return d / OLD_QUEUE
+    return d / DEFAULT_QUEUE
 
 
 def machines(project_dir):
