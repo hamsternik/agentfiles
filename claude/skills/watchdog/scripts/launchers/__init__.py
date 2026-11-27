@@ -8,7 +8,7 @@ desktop prints the start_session arguments; rex acts through Rex. Standard libra
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-CAPS = frozenset({"start", "find_pane", "send", "rename", "find_ended"})
+CAPS = frozenset({"start", "find_pane", "send", "rename", "find_ended", "capture"})
 NAMES = ("terminal", "rex", "desktop")
 
 
@@ -45,6 +45,9 @@ class Launcher(Protocol):
 
     def rename_window(self, pane: Pane, label: str) -> None:
         """Give the pane's window a new label."""
+
+    def capture(self, pane: Pane) -> str:
+        """The text on the pane's screen (cap "capture")."""
 
 
 def get(name, **opts):

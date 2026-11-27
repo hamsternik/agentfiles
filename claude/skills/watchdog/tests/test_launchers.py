@@ -195,7 +195,7 @@ class FakeRex:
             return json.dumps({"windows": [{"window_id": wid, "label": label,
                                             "layers": [{"blocks": [{"block_id": b} for b in blocks]}]}
                                            for wid, label, blocks in self.windows.get(s, [])]})
-        if args[:2] == ["block", "call"] or args[:1] in (["send"], ["send-key"]):
+        if args[:2] == ["block", "call"] or args[:1] in (["send"], ["send-key"], ["capture"]):
             b = self._owned(args)
             if args[0] != "block":
                 return ""
@@ -282,6 +282,13 @@ class TestRexLauncher(unittest.TestCase):
         panes = self.rex(fake).find_ended(plan(), lambda label: label == LABEL)
         self.assertEqual([p.window for p in panes], ["window:2"])
 
+    def test_capture_argv(self):  # bug 1: read the old pane (with -s, like every block call)
+        fake = FakeRex(windows={"proj": [("window:2", LABEL, ["block:2"])]}, pids={"block:2": 77})
+        r = self.rex(fake)
+        r.capture(r.find_pane(77))
+        self.assertEqual(fake.calls[-1], ["capture", "-s", "proj", "-b", "block:2", "--trim"])
+        self.assertIn("capture", r.caps)
+
     def test_label_with_space_and_hash(self):  # 23
         fake = FakeRex(windows={"proj": [("window:2", "watchdog-master #de18597a", ["block:2"])]},
                        pids={"block:2": 77})
@@ -298,9 +305,10 @@ class TestRexLauncher(unittest.TestCase):
 class FakeLauncher:
     name = "fake"
 
-    def __init__(self, caps=("start", "find_pane", "send", "rename", "find_ended"), pane=True, events=None,
-                 windows=()):
+    def __init__(self, caps=("start", "find_pane", "send", "rename", "find_ended", "capture"), pane=True, events=None,
+                 windows=(), screen=""):
         self.caps = frozenset(caps)
+        self.screen = screen  # the text of the old pane after /exit
         self.events = [] if events is None else events
         self.windows = windows  # (label, ended) pairs in the target session
         self.pane = launchers().Pane(session="proj", window="window:2", label=LABEL, block="block:2") if pane else None
@@ -324,15 +332,22 @@ class FakeLauncher:
     def rename_window(self, pane, label):
         self.events.append(("rename", label))
 
+    def capture(self, pane):
+        self.events.append(("capture",))
+        return self.screen
+
 
 RETIRE = {"session": OLD_ID, "pid": 4242, "name": f"{T} #aaaaaaaa", "new_name": f"deprecated {T} #aaaaaaaa",
-          "successor": NEW_ID, "type": [f"/rename deprecated {T} #aaaaaaaa", "/exit"]}
+          "successor": NEW_ID, "successor_pid": 5151, "type": [f"/rename deprecated {T} #aaaaaaaa", "/exit"]}
+MENU = ("Background work is running\n  1. Exit and stop tasks\n  2. Move to background and exit\n  3. Stay")
 
 
 class TestSteps(Base):
-    def retire(self, fake, yes=True, verified=lambda: True, alive=lambda pid: False):
+    def retire(self, fake, yes=True, verified=lambda: True, alive=lambda pid: False, descends=lambda c, a: False,
+               plan=None):
         import io
-        out = io.StringIO()
+        out, err = io.StringIO(), io.StringIO()
+        self.err = err
         ev = fake.events
 
         def v():
@@ -342,8 +357,8 @@ class TestSteps(Base):
         def a(pid):
             ev.append(("alive",))
             return alive(pid)
-        code = steps().retire(fake, RETIRE, yes=yes, verified=v, alive=a, sleep=lambda s: None, verify_tries=3,
-                              exit_wait=3, out=out, err=io.StringIO())
+        code = steps().retire(fake, plan or RETIRE, yes=yes, verified=v, alive=a, sleep=lambda s: None,
+                              verify_tries=3, exit_wait=3, out=out, err=err, descends=descends)
         return code, out.getvalue()
 
     def sends(self, fake):
@@ -405,6 +420,47 @@ class TestSteps(Base):
         self.assertEqual(code, 8)
         self.assertIn("/exit", self.sends(fake))
         self.assertNotIn("rename", [e[0] for e in fake.events])
+
+    def alive_until_1(self, fake):  # the old process ends once "1" is typed into the menu
+        return lambda pid: "1" not in self.sends(fake)
+
+    def test_background_menu_exit_and_stop(self):  # bug 1: the menu, the successor no child -> 1, then rename
+        fake = FakeLauncher(screen=MENU)
+        seen = []
+        code, out = self.retire(fake, alive=self.alive_until_1(fake), descends=lambda c, a: seen.append((c, a)))
+        self.assertEqual(code, 0, self.err.getvalue())
+        self.assertEqual(seen, [(5151, 4242)])
+        self.assertEqual(self.sends(fake)[-2:], ["/exit", "1"])
+        self.assertEqual(self.sends(fake).count("1"), 1)
+        self.assertIn(("rename", f"archived-{LABEL}"), fake.events)
+        self.assertIn("Exit and stop tasks", out)
+
+    def test_background_menu_successor_is_a_child_exit_10(self):  # it would stop the successor: choose nothing
+        fake = FakeLauncher(screen=MENU)
+        code, _ = self.retire(fake, alive=lambda pid: True, descends=lambda c, a: True)
+        self.assertEqual(code, 10)
+        self.assertNotIn("1", self.sends(fake))
+        self.assertNotIn("rename", [e[0] for e in fake.events])
+        self.assertIn("Background work", self.err.getvalue())
+
+    def test_background_menu_no_successor_pid_exit_10(self):  # unknown: choose nothing
+        fake = FakeLauncher(screen=MENU)
+        plan = {k: v for k, v in RETIRE.items() if k != "successor_pid"}
+        code, _ = self.retire(fake, alive=lambda pid: True, plan=plan)
+        self.assertEqual(code, 10)
+        self.assertNotIn("1", self.sends(fake))
+
+    def test_no_menu_no_answer(self):  # a slow exit with no menu: wait as before (exit 8)
+        fake = FakeLauncher(screen="> ")
+        code, _ = self.retire(fake, alive=lambda pid: True)
+        self.assertEqual(code, 8)
+        self.assertNotIn("1", self.sends(fake))
+
+    def test_no_capture_cap_waits_as_before(self):
+        fake = FakeLauncher(caps=("find_pane", "send", "rename"), screen=MENU)
+        code, _ = self.retire(fake, alive=lambda pid: True)
+        self.assertEqual(code, 8)
+        self.assertNotIn(("capture",), fake.events)
 
     def test_no_pane_exit_9(self):  # 18
         fake = FakeLauncher(pane=False)

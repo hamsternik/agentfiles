@@ -94,5 +94,8 @@ class Rex:
             self.run(["send", "-s", pane.session, "-b", pane.block, text])
         self.run(["send-key", "-s", pane.session, "-b", pane.block, "enter"])
 
+    def capture(self, pane):
+        return self.run(["capture", "-s", pane.session, "-b", pane.block, "--trim"])
+
     def rename_window(self, pane, label):
         self.run(["window", "rename", "-s", pane.session, pane.window, label])

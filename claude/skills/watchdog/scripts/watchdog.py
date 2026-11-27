@@ -16,6 +16,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -69,7 +70,8 @@ FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
   overrides it. The window label is always `<role> #<short id>`, the role from the title: no --label option.
 Common options: --project-dir DIR (default: $CLAUDE_PROJECT_DIR, else the project above the cwd), --json.
 Exit codes: 0 ok, 1 no session, 2 refused, 3 duplicates, 4 Fable without the owner's word, 5 timeout, 6 not yet,
-  7 rename not seen, 8 the old process did not exit, 9 no pane has the pid, 64 usage; a failed rex call: its code.
+  7 rename not seen, 8 the old process did not exit, 9 no pane has the pid,
+  10 the background-work menu and the successor may be its child (nothing chosen), 64 usage; a failed rex call: its code.
 Env: WATCHDOG_WAIT (s, 60: name wait), WATCHDOG_VERIFY (tries, 10: rename check), WATCHDOG_EXIT_WAIT (s, 30).
 """
 
@@ -138,6 +140,22 @@ def default_project_dir(env=os.environ, cwd=None, projects=None):
 
 def sessions_dir():
     return Path(os.environ.get("HANDOFF_SESSIONS_DIR") or Path.home() / ".claude" / "sessions")
+
+
+def descends(pid, ancestor):
+    """True when pid is a child (or a later descendant) of ancestor, by the parent pids of `ps`."""
+    seen = set()
+    while pid and pid > 1 and pid not in seen:
+        seen.add(pid)
+        try:
+            ppid = int(subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], text=True,
+                                      capture_output=True).stdout.strip() or 0)
+        except (OSError, ValueError):
+            return False
+        if ppid == ancestor:
+            return True
+        pid = ppid
+    return False
 
 
 def _alive(pid):
@@ -530,7 +548,8 @@ def cmd_retire(a):
         return _err(f"the successor {succ[0].get('name')!r} is not ready: it must run `watchdog.py ready` first", 2)
     new_name = f"deprecated {name}"
     data = {"session": a.session, "pid": target["pid"], "name": name, "new_name": new_name,
-            "successor": ready[0].get("sessionId"), "type": [f"/rename {new_name}", "/exit"]}
+            "successor": ready[0].get("sessionId"), "successor_pid": ready[0].get("pid"),
+            "type": [f"/rename {new_name}", "/exit"]}
     _out(a, data, f"retire {name} (pid {target['pid']}): type `/rename {new_name}`, Enter, then `/exit`, Enter")
     return 0
 
@@ -766,7 +785,7 @@ def _launch(a):
         if a.cmd == "handoff":
             plan = {**d["new"], "project_dir": d["project_dir"]}
             return steps.start(launcher, plan, plan["name"], wait_name, wait)
-        return steps.retire(launcher, d, a.yes, verified=lambda: is_retired(a.session), alive=_alive,
+        return steps.retire(launcher, d, a.yes, verified=lambda: is_retired(a.session), alive=_alive, descends=descends,
                             verify_tries=int(_env_num("WATCHDOG_VERIFY", 10)),
                             exit_wait=_env_num("WATCHDOG_EXIT_WAIT", 30))
     except RexError as e:

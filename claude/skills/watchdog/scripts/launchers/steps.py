@@ -1,12 +1,14 @@
 """The order of the steps of a start and a retire, for any launcher (no front-end knowledge, no CLI).
 
 Exit codes (those of rex-watchdog.sh): 0 ok, 5 no session got the name in time, 7 rename not seen, 8 the old process
-did not exit, 9 no pane has the pid.
+did not exit, 9 no pane has the pid, 10 the old session shows the background-work menu and retire may not answer it.
 """
 import sys
 import time
 
 NEEDED_TO_RETIRE = frozenset({"find_pane", "send", "rename"})
+# /exit with background tasks: "1 Exit and stop tasks / 2 Move to background and exit / 3 Stay" (seen 2026-11-27)
+BACKGROUND_MENU = "Background work is running"
 
 
 def start(launcher, plan, name, wait_name, timeout=60, out=None, err=None, match=None):
@@ -29,9 +31,12 @@ def start(launcher, plan, name, wait_name, timeout=60, out=None, err=None, match
     return 0
 
 
-def retire(launcher, plan, yes, verified, alive, sleep=time.sleep, verify_tries=10, exit_wait=30, out=None, err=None):
+def retire(launcher, plan, yes, verified, alive, sleep=time.sleep, verify_tries=10, exit_wait=30, out=None, err=None,
+           descends=None):
     """Rename the old session to plan["new_name"], wait for the new name, /exit it, wait for its process to end, then
-    rename its window archived-<label>. plan: the JSON of `watchdog.py retire`."""
+    rename its window archived-<label>. plan: the JSON of `watchdog.py retire`.
+    If /exit shows the background-work menu, answer "1 Exit and stop tasks" only when descends(successor pid, old pid)
+    is False (stopping the old tasks cannot stop the successor); else choose nothing and stop (exit 10)."""
     out, err = out or sys.stdout, err or sys.stderr
     pid = plan["pid"]
     if not NEEDED_TO_RETIRE <= launcher.caps:
@@ -63,8 +68,19 @@ def retire(launcher, plan, yes, verified, alive, sleep=time.sleep, verify_tries=
             launcher.send_line(pane, "")
         sleep(1)
     launcher.send_line(pane, "/exit")
-    waited = 0
+    waited, answered = 0, False
     while alive(pid):
+        if not answered and "capture" in launcher.caps and BACKGROUND_MENU in (launcher.capture(pane) or ""):
+            succ = plan.get("successor_pid")
+            if not succ or descends is None or descends(succ, pid):
+                why = f"the successor (pid {succ}) is a child of it" if succ and descends else "no successor pid"
+                print(f"watchdog.py: pid {pid} shows \"{BACKGROUND_MENU}\" and {why}: chose nothing, window not "
+                      f"renamed; answer the menu in pane {pane.block}", file=err)
+                return 10
+            launcher.send_line(pane, "1")
+            answered = True
+            print(f"pid {pid} showed \"{BACKGROUND_MENU}\": chose 1 Exit and stop tasks (the successor, pid {succ}, "
+                  f"is not a child of it)", file=out)
         waited += 1
         if waited > exit_wait:
             print(f"watchdog.py: pid {pid} did not exit: window not renamed", file=err)

@@ -393,6 +393,12 @@ class TestReadyRetire(Base):
             self.assertEqual(self.cli("ready", "--session", NEW_ID).returncode, 0)
         return old_pid, new_pid
 
+    def test_descends(self):  # bug 1: the successor must not be a child of the old pid
+        self.assertTrue(wd.descends(os.getpid(), os.getppid()))
+        self.assertFalse(wd.descends(os.getppid(), os.getpid()))
+        self.assertFalse(wd.descends(os.getpid(), os.getpid() + 999999))
+        self.assertFalse(wd.descends(self.dead_pid(), os.getpid()))
+
     def test_ready_writes_marker(self):
         self.assertEqual(self.cli("ready", "--session", NEW_ID).returncode, 0)
         self.assertTrue((self.cache / f"{NEW_ID}.ready").exists())
@@ -433,11 +439,12 @@ class TestReadyRetire(Base):
         self.assertIn("title", r.stderr)
 
     def test_plan(self):
-        old_pid, _ = self.setup_pair()
+        old_pid, _ = self.setup_pair()  # _ = the successor's pid
         r = self.retire("--caller", NEW_ID)
         self.assertEqual(r.returncode, 0, r.stderr)
         d = json.loads(r.stdout)
         self.assertEqual((d["pid"], d["new_name"]), (old_pid, f"deprecated {T} #aaaaaaaa"))
+        self.assertEqual(d["successor_pid"], _)  # bug 1 (2026-11-27): retire checks it is no child of the old pid
         self.assertEqual(d["type"], [f"/rename deprecated {T} #aaaaaaaa", "/exit"])
 
     def test_verify(self):
