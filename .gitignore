@@ -1,5 +1,6 @@
 # Machine-local config, secrets, project lists. Never committed.
 /local/
+/docs/local/
 *.env
 !*.env.example
 !config/*.env
