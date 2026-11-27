@@ -170,11 +170,21 @@ class TestOldWindowLabel(unittest.TestCase):
 class FakeRex:
     """Answers the rex calls that the launcher makes; records each argv."""
 
-    def __init__(self, sessions=("proj",), windows=None, pids=None):
+    def __init__(self, sessions=("proj",), windows=None, pids=None, caller=None):
         self.calls = []
         self.sessions = list(sessions)
         self.windows = windows or {}  # session label -> [(window id, label, [block ids])]
         self.pids = pids or {}  # block id -> child pid
+        self.caller = caller or self.sessions[0]  # the Rex session of the pane that runs watchdog.py
+
+    def _owned(self, args):
+        """Like rex: a block call with no -s finds only a block of the caller's session ("block target not found")."""
+        s = args[args.index("-s") + 1] if "-s" in args else self.caller
+        b = args[args.index("-b") + 1]
+        if not any(b in blocks for _, _, blocks in self.windows.get(s, [])):
+            from launchers.rex import RexError
+            raise RexError(f"rex {' '.join(args[:2])} failed (1): block target not found")
+        return b
 
     def __call__(self, args):
         self.calls.append(list(args))
@@ -185,8 +195,10 @@ class FakeRex:
             return json.dumps({"windows": [{"window_id": wid, "label": label,
                                             "layers": [{"blocks": [{"block_id": b} for b in blocks]}]}
                                            for wid, label, blocks in self.windows.get(s, [])]})
-        if args[:2] == ["block", "call"]:
-            b = args[args.index("-b") + 1]
+        if args[:2] == ["block", "call"] or args[:1] in (["send"], ["send-key"]):
+            b = self._owned(args)
+            if args[0] != "block":
+                return ""
             return json.dumps({"child": {"pid": self.pids[b]}} if b in self.pids else {"last_exit": {"exit_code": 0}})
         return "{}"
 
@@ -251,6 +263,24 @@ class TestRexLauncher(unittest.TestCase):
         self.assertNotIn(["window", "ls", "-s", "other", "--json"], fake.calls)
         fake2 = FakeRex(windows={"S": [("window:7", LABEL, ["block:7"])]})
         self.assertEqual([p.window for p in self.rex(fake2, session="S").find_ended(plan(), match)], ["window:7"])
+
+    def test_pane_in_a_second_rex_session(self):  # bug 2026-11-27 (SM): block calls need -s of their window's session
+        fake = FakeRex(sessions=("other", "proj"), caller="other",
+                       windows={"other": [("window:1", "x", ["block:1"])],
+                                "proj": [("window:2", LABEL, ["block:2"])]},
+                       pids={"block:1": 11, "block:2": 4242})
+        r = self.rex(fake)
+        pane = r.find_pane(4242)
+        self.assertEqual((pane.session, pane.window, pane.block), ("proj", "window:2", "block:2"))
+        r.send_line(pane, "/exit")
+        self.assertEqual(fake.calls[-2:], [["send", "-s", "proj", "-b", "block:2", "/exit"],
+                                           ["send-key", "-s", "proj", "-b", "block:2", "enter"]])
+
+    def test_find_ended_in_a_second_rex_session(self):  # the same bug in find_ended
+        fake = FakeRex(sessions=("other", "proj"), caller="other",
+                       windows={"proj": [("window:2", LABEL, ["block:2"])]})
+        panes = self.rex(fake).find_ended(plan(), lambda label: label == LABEL)
+        self.assertEqual([p.window for p in panes], ["window:2"])
 
     def test_label_with_space_and_hash(self):  # 23
         fake = FakeRex(windows={"proj": [("window:2", "watchdog-master #de18597a", ["block:2"])]},

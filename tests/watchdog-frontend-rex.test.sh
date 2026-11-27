@@ -88,6 +88,14 @@ start_cmd() {  # the part of `window new` / `session new` after -c DIR ... -- : 
   while [ "$1" != "--" ]; do shift; done; shift
   python3 "$st/sim.py" start "$cwd" "$@"
 }
+# like rex: a block of another Rex session is found only with -s <its session>
+blk=""; sess=""; last=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "-b" ] && blk="$a"; [ "$prev" = "-s" ] && sess="$a"; prev="$a"; last="$a"
+done
+case "$1" in block|send|send-key)
+  [ "$sess" = proj ] || { echo "block target not found" >&2; exit 1; } ;;
+esac
 case "$1" in
   session)
     case "$2" in
@@ -100,11 +108,11 @@ case "$1" in
       new) start_cmd "$@" ;;
       rename) : ;;
     esac ;;
-  block) pid="$(grep "^$4 " "$st/pids" | cut -d' ' -f2)"
+  block) pid="$(grep "^$blk " "$st/pids" | cut -d' ' -f2)"
          if [ -n "$pid" ]; then printf '{"child":{"pid":%s,"argv0":"claude"}}\n' "$pid"
          else printf '{"last_exit":{"exit_code":0}}\n'; fi ;;  # an ended pane: no child
-  send) printf '%s' "$4" > "$st/pending-$3" ;;
-  send-key) python3 "$st/sim.py" enter "$3" ;;
+  send) printf '%s' "$last" > "$st/pending-$blk" ;;
+  send-key) python3 "$st/sim.py" enter "$blk" ;;
 esac
 SH
   chmod +x "$st/bin/rex"
@@ -237,7 +245,7 @@ teardown
 setup; pair ready
 run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "28 retire: exits 0"                      [ "$rc" = 0 ]
-check "28 retire: the order of the Rex calls"   order "send -b block:B1 /rename deprecated $T #aaaaaaaa" "send-key -b block:B1 enter" "send -b block:B1 /exit" "send-key -b block:B1 enter" "window rename -s proj window:W1 archived-watchdog-master-aaaaaaaa"
+check "28 retire: the order of the Rex calls"   order "send -s proj -b block:B1 /rename deprecated $T #aaaaaaaa" "send-key -s proj -b block:B1 enter" "send -s proj -b block:B1 /exit" "send-key -s proj -b block:B1 enter" "window rename -s proj window:W1 archived-watchdog-master-aaaaaaaa"
 check "28 retire: the old pid is gone"          pid_gone "$old_pid"
 check "28 retire: the successor still runs"     kill -0 "$new_pid"
 teardown
@@ -247,13 +255,13 @@ setup; pair ready
 export FAKE_RENAME_ENTERS=2
 run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "29 second Enter: exits 0"                [ "$rc" = 0 ]
-check "29 second Enter: 2 Enters before /exit"  [ "$(sed -n '/\/exit/q;p' "$st/log" | grep -c '^send-key -b block:B1 enter')" = 2 ]
+check "29 second Enter: 2 Enters before /exit"  [ "$(sed -n '/\/exit/q;p' "$st/log" | grep -c '^send-key -s proj -b block:B1 enter')" = 2 ]
 teardown
 setup; pair ready
 export FAKE_RENAME_ENTERS=99
 run retire --session "$OLD_ID" --caller "$NEW_ID" --frontend rex --yes
 check "29 rename never applied: exit 7"         [ "$rc" = 7 ]
-check "29 rename never applied: no /exit sent"  not_logged "^send -b block:B1 /exit"
+check "29 rename never applied: no /exit sent"  not_logged "^send -s proj -b block:B1 /exit"
 check "29 rename never applied: old pid runs"   kill -0 "$old_pid"
 teardown
 

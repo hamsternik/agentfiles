@@ -60,13 +60,17 @@ class Rex:
             if not match(w.get("label", "")):
                 continue
             blocks = [b["block_id"] for layer in w.get("layers", []) for b in layer.get("blocks", [])]
-            if blocks and all(self._ended(b) for b in blocks):
+            if blocks and all(self._ended(session, b) for b in blocks):
                 found.append(Pane(session=session, window=w["window_id"], label=w.get("label", ""), block=blocks[0]))
         return found
 
-    def _ended(self, block):
+    def _process(self, session, block):
+        """The process of a block. -s: rex finds a block of another Rex session only with its session."""
+        return json.loads(self.run(["block", "call", "-s", session, "-b", block, "process"]))
+
+    def _ended(self, session, block):
         try:
-            return "child" not in json.loads(self.run(["block", "call", "-b", block, "process"]))
+            return "child" not in self._process(session, block)
         except (TypeError, ValueError, RexError):
             return False  # unknown: never rename it
 
@@ -77,7 +81,7 @@ class Rex:
                 for layer in w.get("layers", []):
                     for b in layer.get("blocks", []):
                         try:
-                            child = json.loads(self.run(["block", "call", "-b", b["block_id"], "process"]))["child"]
+                            child = self._process(session, b["block_id"])["child"]
                         except (KeyError, TypeError, ValueError, RexError):
                             continue
                         if child.get("pid") == pid:
@@ -87,8 +91,8 @@ class Rex:
 
     def send_line(self, pane, text):
         if text:
-            self.run(["send", "-b", pane.block, text])
-        self.run(["send-key", "-b", pane.block, "enter"])
+            self.run(["send", "-s", pane.session, "-b", pane.block, text])
+        self.run(["send-key", "-s", pane.session, "-b", pane.block, "enter"])
 
     def rename_window(self, pane, label):
         self.run(["window", "rename", "-s", pane.session, pane.window, label])
