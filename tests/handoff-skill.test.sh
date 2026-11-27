@@ -74,6 +74,7 @@ setup() {
   git -C "$tmp/work/p1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
   git -C "$tmp/work/p1" worktree add -q "$tmp/work/p1-wt" -b wt 2>/dev/null   # a worktree: .git is a file
   printf '{\n  "permissions": {"allow": ["Bash(ls)"]}\n}\n' > "$tmp/work/p2/.claude/settings.local.json"
+  printf 'CLAUDE.local.md\n.claude/settings.local.json\n' > "$tmp/work/p2/.gitignore"   # p2 ignores them itself
   printf '{\n  "model": "opus"\n}\n' > "$tmp/home/.claude/settings.json"
 }
 step() {  # step <file> [VAR=value...]; sets $out, $rc
@@ -86,7 +87,9 @@ statusline_of() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."): d=d.get(k) if isinstance(d, dict) else None
 print(d if d is not None else "")' "$tmp/home/.claude/settings.json" "$1"; }
 hooks_in() { grep -c 'handoff-session-context/scripts/context.py\\" hook' "$1" 2>/dev/null || true; }
-excluded() { grep -qxF '/.claude/skills/handoff-session-context' "$(git -C "$1" rev-parse --path-format=absolute --git-path info/exclude)"; }
+exclude_of() { git -C "$1" rev-parse --path-format=absolute --git-path info/exclude; }
+excluded() { grep -qxF '/.claude/skills/handoff-session-context' "$(exclude_of "$1")"; }
+lines_in() { grep -cxF -- "$2" "$(exclude_of "$1")" 2>/dev/null || true; }
 
 for file in roles/master/steps/70-watchdog.sh roles/slave/steps/87-watchdog.sh; do
   setup
@@ -99,6 +102,12 @@ for file in roles/master/steps/70-watchdog.sh roles/slave/steps/87-watchdog.sh; 
     check "$file: $p: link is git-excluded"            excluded "$tmp/work/$p"
     check "$file: $p: git status stays clean"          [ -z "$(git -C "$tmp/work/$p" status --porcelain -- .claude)" ]
   done
+  # 27. the owner's local files are excluded once, unless the repo ignores them already
+  for p in p1 p1-wt; do
+    check "$file: $p: CLAUDE.local.md excluded"        [ "$(lines_in "$tmp/work/$p" /CLAUDE.local.md)" = 1 ]
+    check "$file: $p: settings.local.json excluded"    [ "$(lines_in "$tmp/work/$p" /.claude/settings.local.json)" = 1 ]
+  done
+  check "$file: p2: ignored files get no exclude line" [ "$(lines_in "$tmp/work/p2" /CLAUDE.local.md)" = 0 ]
   check "$file: p2: keeps the other local settings"    holds "$tmp/work/p2/.claude/settings.local.json" 'Bash(ls)'
   check "$file: a folder with no git gets nothing"     [ ! -e "$tmp/work/notgit/.claude" ]
   check "$file: a foreign skill folder is left alone"  [ ! -L "$tmp/work/foreign/.claude/skills/handoff-session-context" ]
@@ -110,6 +119,25 @@ for file in roles/master/steps/70-watchdog.sh roles/slave/steps/87-watchdog.sh; 
   check "$file: a second run exits 0"                  [ "$rc" = 0 ]
   check "$file: a second run adds no hook"             [ "$(hooks_in "$tmp/work/p1/.claude/settings.local.json")" = 1 ]
   check "$file: a second run adds no exclude line"     [ "$(grep -c handoff-session-context "$tmp/work/p1/.git/info/exclude")" = 1 ]
+  check "$file: a second run: CLAUDE.local.md once"    [ "$(lines_in "$tmp/work/p1" /CLAUDE.local.md)" = 1 ]
+  rm -rf "$tmp"
+
+  # 29. no settings.json (a new slave): it is made with the statusline
+  setup
+  rm "$tmp/home/.claude/settings.json"
+  step "$file"
+  check "$file: no settings.json: exits 0"             [ "$rc" = 0 ]
+  check "$file: no settings.json: made with statusLine" [ "$(statusline_of statusLine.command)" = "sh \"$repo/claude/statusline.sh\"" ]
+  rm -rf "$tmp"
+
+  # 29. the owner's own statusline already records the window: no manual step
+  setup
+  printf '{\n  "statusLine": {"type": "command", "command": "sh mine.sh"}\n}\n' > "$tmp/home/.claude/settings.json"
+  # shellcheck disable=SC2016  # the script text, not expanded here
+  printf '#!/bin/sh\ninput=$(cat)\nprintf %%s "$input" | python3 x/context.py record\n' > "$tmp/home/.claude/statusline-command.sh"
+  step "$file"
+  check "$file: own statusline with record: left alone" [ "$(statusline_of statusLine.command)" = "sh mine.sh" ]
+  check "$file: own statusline with record: no manual" lacks "$tmp/af/state/manual-steps.md" "context.py record"
   rm -rf "$tmp"
 
   # a statusline of the owner's own is left alone; the manual step names the record line

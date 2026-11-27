@@ -188,37 +188,52 @@ install_session_sync() {
   link_ours "$AF_ROOT/claude/skills/sync-sessions-to-seat" "$skills/sync-sessions-to-seat"
 }
 
-# Project watchdogs: the start-project-watchdog skill (rules, launcher, watchdog.sh).
+# Project watchdogs: the watchdog skill (rules, the watchdog.py CLI). The old
+# start-project-watchdog link goes when it points into this clone.
 install_watchdog_skill() {
-  local skills="$HOME/.claude/skills"
+  local skills="$HOME/.claude/skills" old="$HOME/.claude/skills/start-project-watchdog"
   run mkdir -p "$skills"
-  link_ours "$AF_ROOT/claude/skills/start-project-watchdog" "$skills/start-project-watchdog"
+  link_ours "$AF_ROOT/claude/skills/watchdog" "$skills/watchdog"
+  if [[ -L "$old" && "$(readlink "$old")" == "$AF_ROOT/claude/skills/start-project-watchdog" ]]; then
+    run rm "$old"
+    [[ "$AF_DRY_RUN" == 1 ]] || ok "Removed the old link $old (skill watchdog replaces start-project-watchdog)"
+  elif [[ -e "$old" || -L "$old" ]]; then
+    warn "$old exists and is not ours; leaving it."
+  fi
 }
 
 # Work skills: installed per work project, never in ~/.claude/skills (Nikita,
 # 2026-11-24). A work project = a git repo or worktree directly in $AF_WORK_ROOT.
 WORK_SKILLS=(handoff-session-context)
 
+# exclude_local <project dir> <path>: add /path to the git exclude file of the
+# repo (local, never the shared .gitignore) once, unless git already ignores it.
+exclude_local() {
+  local project="$1" path="$2" exclude
+  exclude="$(git -C "$project" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
+  [[ -n "$exclude" ]] || return 0
+  grep -qxF "$path" "$exclude" 2>/dev/null && return 0
+  git -C "$project" check-ignore -q --no-index "${path#/}" 2>/dev/null && return 0
+  if [[ "$AF_DRY_RUN" == 1 ]]; then
+    printf '   [dry-run] add %s to %s\n' "$path" "$exclude" >&2
+  else
+    mkdir -p "$(dirname "$exclude")"
+    printf '%s\n' "$path" >> "$exclude"
+  fi
+}
+
 # install_project_skill <skill> <project dir>: link the skill into
 # <project>/.claude/skills/, hide the link from git (.git/info/exclude, local),
 # then run the skill's own scripts/project-install.sh <project dir> if it has one.
 install_project_skill() {
   local skill="$1" project="$2" src="$AF_ROOT/claude/skills/$1"
-  local target="$project/.claude/skills/$skill" exclude=""
+  local target="$project/.claude/skills/$skill"
   [[ -d "$src" ]] || { warn "no such skill: $src"; return 0; }
   run mkdir -p "$project/.claude/skills"
   link_ours "$src" "$target"
   [[ "$(readlink "$target" 2>/dev/null)" == "$src" || "$AF_DRY_RUN" == 1 ]] || return 0
   # a worktree has a .git file: git names the exclude file it reads
-  exclude="$(git -C "$project" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
-  if [[ -n "$exclude" ]] && ! grep -qxF "/.claude/skills/$skill" "$exclude" 2>/dev/null; then
-    if [[ "$AF_DRY_RUN" == 1 ]]; then
-      printf '   [dry-run] add /.claude/skills/%s to %s\n' "$skill" "$exclude" >&2
-    else
-      mkdir -p "$(dirname "$exclude")"
-      printf '/.claude/skills/%s\n' "$skill" >> "$exclude"
-    fi
-  fi
+  exclude_local "$project" "/.claude/skills/$skill"
   if [[ -x "$src/scripts/project-install.sh" ]]; then
     if [[ "$AF_DRY_RUN" == 1 ]]; then
       printf '   [dry-run] %s %s\n' "$src/scripts/project-install.sh" "$project" >&2
@@ -238,6 +253,9 @@ install_work_skills() {
     for skill in "${WORK_SKILLS[@]}"; do
       install_project_skill "$skill" "$project"
     done
+    # the owner's own files in a work repo: local notes and settings (never in a shared .gitignore)
+    exclude_local "$project" /CLAUDE.local.md
+    exclude_local "$project" /.claude/settings.local.json
   done
 }
 
