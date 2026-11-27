@@ -61,9 +61,6 @@ for cmd in '$W handoff' '$W retire' '$W restore' '$W start' '$W ready' '$W statu
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
 done
 check "SKILL.md no longer uses latest.py"       lacks "$skill/SKILL.md" 'latest\.py'
-check "start-project-watchdog uses watchdog.py" holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "scripts/watchdog.py\" new"
-check "start-project-watchdog: --frontend rex"  holds "$repo/claude/skills/start-project-watchdog/SKILL.md" "--frontend rex"
-check "start-project-watchdog: no wrapper"      lacks "$repo/claude/skills/start-project-watchdog/SKILL.md" 'rex-watchdog'
 
 # 3. Install step: work projects only (Nikita 2026-11-24: no work skill in ~/.claude/skills)
 setup() {

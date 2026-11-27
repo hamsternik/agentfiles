@@ -78,4 +78,10 @@ check "no owner's name"                         lacks "$skill" 'Nikita'
 # Agent-specific project files live in .claude/docs/, not in the root docs/ (owner, 2026-11-12).
 check "project part lives in .claude/docs"      holds "$skill/SKILL.md" ".claude/docs/prompts/<project>-watchdog.md"
 
+# 30. No tracked file names the old skill or the old CLI path, except the removal code, its tests and the plans (history).
+old_names='start-project-watchdog|handoff-session-context/scripts/watchdog\.py'
+stale="$(git -C "$repo" grep -lE "$old_names" -- . ':!lib/common.sh' ':!tests/watchdog-step.test.sh' \
+  ':!tests/watchdog-skill.test.sh' ':!docs/plans/' 2>/dev/null || true)"
+check "no tracked file names the old names (${stale:-none})" [ -z "$stale" ]
+
 (( fails == 0 )) || { echo "$fails failure(s)"; exit 1; }
