@@ -23,8 +23,8 @@ projects:
     repo: git@github.com:me/mine.git
     group: personal
     enabled: true
-  - name: crawler
-    repo: git@github-work:org/crawler.git
+  - name: worker
+    repo: git@github-work:org/worker.git
     group: work
     enabled: true
   - name: nogroup
@@ -58,20 +58,20 @@ called()     { grep -qF -- "$1" "$tmp/calls"; }
 not_called() { ! grep -qF -- "$1" "$tmp/calls"; }
 
 af projects sync
-check "work project cloned into AF_WORK_DIR"         called "git clone git@github-work:org/crawler.git $tmp/work/crawler"
+check "work project cloned into AF_WORK_DIR"         called "git clone git@github-work:org/worker.git $tmp/work/worker"
 check "personal project cloned into AF_PERSONAL_DIR" called "git clone git@github.com:me/mine.git $tmp/personal/mine"
 check "no group -> personal"                         called "git clone git@github.com:me/nogroup.git $tmp/personal/nogroup"
 check "disabled project not cloned"                  not_called "off.git"
 
-mkdir -p "$tmp/work/crawler/.agent"
-cat > "$tmp/work/crawler/.agent/project.yaml" <<'EOF'
+mkdir -p "$tmp/work/worker/.agent"
+cat > "$tmp/work/worker/.agent/project.yaml" <<'EOF'
 needs: {us_gateway: false, browser: false}
 jobs:
   - name: hello
     command: "pwd > ran.txt"
 EOF
-af job crawler hello
-check "af job runs in the work group folder"         [ "$(cat "$tmp/work/crawler/ran.txt" 2>/dev/null)" = "$tmp/work/crawler" ]
+af job worker hello
+check "af job runs in the work group folder"         [ "$(cat "$tmp/work/worker/ran.txt" 2>/dev/null)" = "$tmp/work/worker" ]
 
 printf 'projects:\n  - name: bad\n    repo: x\n    group: hobby\n    enabled: true\n' > "$tmp/local/projects.yaml"
 af projects sync

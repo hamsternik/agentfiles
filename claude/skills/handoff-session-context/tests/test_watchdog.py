@@ -176,7 +176,7 @@ class TestStatus(Base):
     def test_without_title_all_watchdogs_but_deprecated(self):
         self.session(OLD_ID, "u1", "2026-11-20T12:00:00Z", title=f"deprecated {T}")
         self.session(NEW_ID, "u2", "2026-11-25T12:00:00Z", title="other (watchdog-slave) #bbbbbbbb")
-        self.session("cccccccc-1111-2222-3333-444444444444", "u3", "2026-11-25T12:00:00Z", title="crawl Kroger")
+        self.session("cccccccc-1111-2222-3333-444444444444", "u3", "2026-11-25T12:00:00Z", title="nightly sync")
         rows = wd.status_rows(None, PROJECT)
         self.assertEqual([r["session"] for r in rows], [NEW_ID])
 

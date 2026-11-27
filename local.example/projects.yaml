@@ -9,8 +9,8 @@ projects:
     group: personal
     enabled: true
 
-  - name: example-crawler
+  - name: example-service
     # A work repo cloned with the work identity via an SSH host alias:
-    repo: git@github-work:your-org/example-crawler.git
+    repo: git@github-work:your-org/example-service.git
     group: work
     enabled: false

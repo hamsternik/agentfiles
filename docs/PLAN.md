@@ -10,7 +10,7 @@ Agents running on the laptop you work on are always within reach, so it is
 always easier to step in by hand than to automate. A separate machine removes
 that option and forces a workflow that runs without you, while still letting
 you step in at any point. It also takes always-on load off the main laptop:
-VPN egress, crawls, long-running jobs, parallel simulators.
+VPN egress, batch jobs, long-running jobs, parallel simulators.
 
 ## Principles
 
@@ -73,7 +73,7 @@ VPN egress, crawls, long-running jobs, parallel simulators.
 ### Phase 0 — Prepare (on the master)
 - [x] Push this repo to a **private** GitHub repo; run `make hooks`.
 - [ ] Fill `local/denylist.txt` on the master with employer, client and work-domain terms.
-- [ ] List what moves to the host: long-running jobs, crawlers, anything needing US egress.
+- [ ] List what moves to the host: long-running jobs, batch jobs, anything that needs VPN egress.
 - [ ] In the VPN account, generate a WireGuard key for the host (uses one device slot).
 - [x] Decide FileVault on/off for the host: **on** (see runbook: *Reboots and FileVault*).
 - [x] Back up anything on the spare Mac you still want.

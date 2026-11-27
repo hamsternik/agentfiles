@@ -137,7 +137,7 @@ class TestNames(Base):
     def test_names_do_not_depend_on_the_caller(self):  # 7
         self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
         callers = [({}, None),
-                   ({"REX_SESSION": "session:other", "REX_BLOCK": "block:crawl-problems-review"}, None),
+                   ({"REX_SESSION": "session:other", "REX_BLOCK": "block:feature-review"}, None),
                    ({}, str(self.root))]
         seen = []
         for extra, cwd in callers:

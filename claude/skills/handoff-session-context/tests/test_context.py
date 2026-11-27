@@ -48,8 +48,8 @@ class Tmp(unittest.TestCase):
 
 class TestSlug(unittest.TestCase):
     def test_slug_matches_claude_code(self):
-        self.assertEqual(context.project_slug("/home/u/Developer/_work/shelf-crawl"),
-                         "-home-u-Developer--work-shelf-crawl")
+        self.assertEqual(context.project_slug("/home/u/Developer/_work/example-app"),
+                         "-home-u-Developer--work-example-app")
 
 
 class TestContextSize(Tmp):
@@ -294,8 +294,8 @@ class TestHandoffPath(Tmp):
         (root / ".git").mkdir(parents=True)
         (root / "docs" / "local").mkdir(parents=True)
         (root / "sub").mkdir()
-        p = context.handoff_path(root / "sub", "shelf-crawl (watchdog-master)", "20261124")
-        self.assertEqual(p, root / "docs/local/shelf-crawl-watchdog-master-handoff-20261124.md")
+        p = context.handoff_path(root / "sub", "example-app (watchdog-master)", "20261124")
+        self.assertEqual(p, root / "docs/local/example-app-watchdog-master-handoff-20261124.md")
 
     def test_fallback_to_cwd_and_suffix(self):
         cwd = self.tmp / "plain"

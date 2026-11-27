@@ -119,7 +119,7 @@ Names
 6. `window_label_for`: `proj (watchdog-master)` → `watchdog-master #<id>`; `proj/ (watchdog)` → `watchdog #<id>`;
    `a (b) (watchdog-slave)` → `watchdog-slave #<id>`; `plain title` → `plain title #<id>`; a title that already
    ends in ` #<8 hex>` → one ` #<id>` only (protects: the project name in the label, and a doubled id).
-7. `new`, `restore`, `handoff` of `proj (watchdog-master)` from callers in the windows `crawl-problems-review` and
+7. `new`, `restore`, `handoff` of `proj (watchdog-master)` from callers in the windows `feature-review` and
    `watchdog-master #de18597a`, and from a plain terminal → the same window label and session name (protects:
    names that depend on the caller).
 8. Rex session: no `--rex`, a Rex session `proj` exists, the caller is in the Rex session `other` → the window goes
@@ -216,11 +216,11 @@ Changes found during the build (each one also changed in the text above):
 Tests: 108 Python tests (test_watchdog 50, test_context 33, test_launchers 25), `make test` (47 checks in
 watchdog-frontend-rex), `make lint` clean.
 
-Live check on the master (one Haiku test session `shelf-crawl (watchdog-livecheck)`, no second child session: the
+Live check on the master (one Haiku test session `example-app (watchdog-livecheck)`, no second child session: the
 bulk-job rule):
-1. `new --frontend rex` from a Rex pane → window `watchdog-livecheck #b7e63c93` in the Rex session `shelf-crawl`; the
+1. `new --frontend rex` from a Rex pane → window `watchdog-livecheck #b7e63c93` in the Rex session `example-app`; the
    session ran `ready` and replied.
-2. `restore --frontend rex` with no `REX_*` variables → the same label in `shelf-crawl`; the session got the restore
+2. `restore --frontend rex` with no `REX_*` variables → the same label in `example-app`; the session got the restore
    prompt and acted on it.
 3. `restore` with no `--frontend` → printed the line, started nothing; the line, pasted into `zsh -lc`, resumed the
    session with the prompt.
