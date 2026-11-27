@@ -342,7 +342,7 @@ def live_of_title(title):
 
 def _out(a, data, text):
     a.decision = data
-    if getattr(a, "frontend", "terminal") != "terminal" and not a.json:
+    if getattr(a, "frontend", "terminal") != "terminal" and not (a.json or getattr(a, "dry_run", False)):
         return  # the launcher steps print their own lines
     print(json.dumps(data) if a.json else text)
 
@@ -526,8 +526,16 @@ def cmd_retire(a):
 
 
 def _git_project(a):
-    """The git root of --project-dir, else of $CLAUDE_PROJECT_DIR, else of the cwd (init, public, queue)."""
-    return project.git_root(a.project_dir or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    """The git root of --project-dir; else of the cwd; else of $CLAUDE_PROJECT_DIR (init, public, queue, whatsup,
+    start). The cwd comes before $CLAUDE_PROJECT_DIR: a session may run the CLI for another repo."""
+    if a.project_dir:
+        return project.git_root(a.project_dir)
+    try:
+        return project.git_root(os.getcwd())
+    except project.ProjectError:
+        if os.environ.get("CLAUDE_PROJECT_DIR"):
+            return project.git_root(os.environ["CLAUDE_PROJECT_DIR"])
+        raise
 
 
 def cmd_init(a):
@@ -717,7 +725,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _frontend(p, retire=False):
     p.add_argument("--frontend", choices=("terminal", "rex", "desktop"), default="terminal")
-    p.add_argument("--dry-run", action="store_true", help="terminal: print the claude line, do not run it")
+    p.add_argument("--dry-run", action="store_true", help="print the decision and the claude line; act on no front-end")
     p.add_argument("--rex", help="the Rex session for the window (default: the one named after the project folder)")
     if retire:
         p.add_argument("--yes", action="store_true", help="with a front-end that types: act, not a dry run")
@@ -833,6 +841,11 @@ def main(argv=None):
             return {"init": cmd_init, "public": cmd_public, "queue": cmd_queue, "whatsup": cmd_whatsup}[a.cmd](a)
         except project.ProjectError as e:
             return _err(str(e), 1)
+    if a.cmd == "start" and not a.project_dir:  # a new session: the git root of the cwd, never a parent folder
+        try:
+            a.project_dir = str(_git_project(a))
+        except project.ProjectError:
+            pass
     a.project_dir = a.project_dir or default_project_dir()
     frontend = getattr(a, "frontend", "terminal")
     if frontend == "rex" and not shutil.which("rex"):
@@ -842,8 +855,8 @@ def main(argv=None):
     execs = frontend == "terminal" and a.cmd in STARTS and not (a.json or a.dry_run)
     code = {"status": cmd_status, "restore": cmd_restore, "start": cmd_start, "handoff": cmd_handoff,
             "ready": cmd_ready, "retire": cmd_retire}[a.cmd](a)
-    if code != 0 or getattr(a, "verify", False) or a.cmd in ("status", "ready"):
-        return code  # a refusal keeps its own exit code
+    if code != 0 or getattr(a, "verify", False) or a.cmd in ("status", "ready") or getattr(a, "dry_run", False):
+        return code  # a refusal keeps its own exit code; --dry-run never acts, on any front-end
     if execs and os.environ.get("CLAUDECODE"):  # a refusal only: CLAUDECODE never chooses the front-end
         return _err("inside a Claude Code session the terminal front-end cannot run claude: use --frontend rex or "
                     "--frontend desktop (or --dry-run to print the line)", 64)

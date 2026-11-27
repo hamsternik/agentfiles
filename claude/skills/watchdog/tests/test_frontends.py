@@ -18,14 +18,14 @@ class FrontBase(Base):
         self.proj.mkdir()
         self.env.pop("CLAUDECODE", None)
 
-    def cli(self, *args, claudecode=None, extra=None):
+    def cli(self, *args, claudecode=None, extra=None, cwd=None):
         env = {k: v for k, v in {**os.environ, **self.env}.items() if k != "CLAUDECODE"}
         if claudecode:
             env["CLAUDECODE"] = claudecode
         env.update(extra or {})
         import subprocess
         from test_watchdog import SCRIPT
-        return subprocess.run([sys.executable, str(SCRIPT), *args], text=True, capture_output=True, env=env)
+        return subprocess.run([sys.executable, str(SCRIPT), *args], text=True, capture_output=True, env=env, cwd=cwd)
 
     def execs(self):
         if not self.claude_log.exists():

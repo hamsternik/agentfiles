@@ -83,6 +83,39 @@ class TestRefused(StartBase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
+# Regression 2026-11-27: `start --frontend rex --dry-run` started a real Rex session in the wrong folder.
+class TestDryRunNeverActs(StartBase):
+    def test_rex_dry_run_makes_no_rex_call(self):
+        log = self.root / "rex.log"
+        stub = self.bin / "rex"
+        stub.write_text(f"#!/bin/sh\necho \"$@\" >> {log}\necho '{{}}'\n")
+        stub.chmod(0o755)
+        for fe in ("rex", "desktop", "terminal"):
+            r = self.cli("start", "--model", "claude-opus-5-5", "--project-dir", str(self.proj), "--frontend", fe,
+                         "--dry-run", claudecode="1")
+            self.assertEqual(r.returncode, 0, f"{fe}: {r.stderr}")
+            self.assertIn("claude --session-id", r.stdout, fe)
+        self.assertFalse(log.exists(), log.read_text() if log.exists() else "")
+        self.assertEqual(self.execs(), [])
+
+
+class TestProjectFromCwd(StartBase):
+    def test_no_project_dir_is_the_git_root_of_the_cwd(self):
+        """The parent folder has transcripts (old default: the nearest folder with transcripts) and
+        CLAUDE_PROJECT_DIR names another project: start still takes the git root of the cwd."""
+        import subprocess
+        from test_watchdog import context
+        subprocess.run(["git", "init", "-q", str(self.proj)], check=True)
+        (self.projects / context.project_slug(str(self.root))).mkdir(parents=True, exist_ok=True)
+        (self.proj / "sub").mkdir()
+        r = self.cli("start", "--model", "claude-opus-5-5", "--json", cwd=self.proj / "sub",
+                     extra={"CLAUDE_PROJECT_DIR": str(self.root / "elsewhere"), "PWD": str(self.proj / "sub")})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = json.loads(r.stdout)
+        self.assertEqual(Path(d["project_dir"]).resolve(), self.proj.resolve())
+        self.assertTrue(d["name"].startswith("proj (watchdog) #"), d["name"])
+
+
 # 10. `new` is gone: usage with a hint
 class TestNewRemoved(StartBase):
     def test_new_is_usage_with_a_hint(self):
