@@ -25,6 +25,7 @@ _HERE = Path(__file__).resolve().parent  # the real folder in the clone (the ski
 sys.path.insert(0, str(_HERE))
 sys.path.insert(1, str(_HERE.parent.parent / "handoff-session-context" / "scripts"))  # context.py stays there
 import context  # noqa: E402
+import project  # noqa: E402
 
 LIVE_SECONDS = 120
 SKILL_SCRIPTS = Path(os.path.abspath(__file__)).parent  # keeps the project link path when called through it
@@ -44,6 +45,12 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
   retire   --session ID [--caller ID] [--verify] [FRONT-END] [--yes]
            check that the old session may be retired; print what to type; --verify: is it retired?
            with --frontend rex: a dry run; --yes types /rename and /exit, then renames the window archived-<label>
+  init     [--local]
+           the project part and the decision queue from the templates (never overwrites); --local: git-exclude both
+  public   public, private or unknown (gh repo view)
+  queue next-id
+           the next D-id of the decision queue (path: "Queue file:" in the project part, else
+           .claude/docs/decisions/queue.md)
   help     this text
 
 FRONT-END: --frontend terminal|rex [--rex S]. terminal (the default) works everywhere: it only prints, as above.
@@ -485,6 +492,32 @@ def cmd_retire(a):
     return 0
 
 
+def _git_project(a):
+    """The git root of --project-dir, else of $CLAUDE_PROJECT_DIR, else of the cwd (init, public, queue)."""
+    return project.git_root(a.project_dir or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+
+
+def cmd_init(a):
+    for line in project.init(_git_project(a), local=a.local):
+        print(line)
+    return 0
+
+
+def cmd_public(a):
+    print(project.public(_git_project(a)))
+    return 0
+
+
+def cmd_queue(a):
+    q = project.queue_path(_git_project(a))
+    if not q.is_file():
+        return _err(f"no queue file {q}: run `watchdog.py init`, or name it in the project part (Queue file:)", 1)
+    if a.qcmd == "next-id":
+        print(project.next_id(q.read_text(errors="ignore")))
+        return 0
+    return _err(f"unknown queue command {a.qcmd!r}", 64)
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message):  # a usage error is exit 64 (2 is "refused")
         self.print_usage(sys.stderr)
@@ -576,7 +609,18 @@ def main(argv=None):
     p.add_argument("--caller")
     p.add_argument("--verify", action="store_true")
     _frontend(p, retire=True)
+    p = add("init")
+    p.add_argument("--local", action="store_true", help="hide the 2 files in the repo's git exclude file")
+    add("public")
+    p = add("queue")
+    qs = p.add_subparsers(dest="qcmd", required=True)
+    qs.add_parser("next-id")
     a = ap.parse_args(argv)
+    if a.cmd in ("init", "public", "queue"):
+        try:
+            return {"init": cmd_init, "public": cmd_public, "queue": cmd_queue}[a.cmd](a)
+        except project.ProjectError as e:
+            return _err(str(e), 1)
     a.project_dir = a.project_dir or default_project_dir()
     frontend = getattr(a, "frontend", "terminal")
     if frontend == "rex" and not shutil.which("rex"):
