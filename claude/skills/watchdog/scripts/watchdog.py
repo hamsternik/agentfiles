@@ -53,7 +53,10 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
            .claude/docs/decisions/queue.md)
   help     this text
 
-FRONT-END: --frontend terminal|rex [--rex S]. terminal (the default) works everywhere: it only prints, as above.
+FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
+  terminal (the default) runs the claude line in this terminal (restore, new, handoff); --dry-run (or --json) only
+  prints it. It refuses inside a Claude Code session ($CLAUDECODE): use rex or desktop there. retire only prints.
+  desktop prints the start_session arguments (title, cwd, model, prompt) as JSON; it cannot restore or type.
   rex starts the window (restore, new, handoff) or types into the pane (retire) through Rex, from a Rex pane or a
   plain terminal. The Rex session is the one labelled with the project folder name (made when missing); --rex S
   overrides it. The window label is always `<role> #<short id>`, the role from the title: no --label option.
@@ -64,6 +67,7 @@ Env: WATCHDOG_WAIT (s, 60: name wait), WATCHDOG_VERIFY (tries, 10: rename check)
 """
 
 SUFFIX = re.compile(r" #[0-9a-f]{8}$")
+STARTS = ("restore", "new", "handoff")  # the commands that start a session
 
 
 # ---- names ---------------------------------------------------------------------------------------------------------
@@ -525,7 +529,8 @@ class _Parser(argparse.ArgumentParser):
 
 
 def _frontend(p, retire=False):
-    p.add_argument("--frontend", choices=("terminal", "rex"), default="terminal")
+    p.add_argument("--frontend", choices=("terminal", "rex", "desktop"), default="terminal")
+    p.add_argument("--dry-run", action="store_true", help="terminal: print the claude line, do not run it")
     p.add_argument("--rex", help="the Rex session for the window (default: the one named after the project folder)")
     if retire:
         p.add_argument("--yes", action="store_true", help="with a front-end that types: act, not a dry run")
@@ -549,6 +554,8 @@ def _launch(a):
     try:
         if a.cmd == "new":
             return steps.start(launcher, d, d["name"], wait_name, wait)
+        if a.cmd == "restore" and a.frontend == "terminal":
+            return steps.start(launcher, d, d["title"], wait_name, wait)
         if a.cmd == "restore":  # first archive the ended window of the same session (Rex keeps it open)
             return steps.start(launcher, d, d["title"], wait_name, wait,
                                match=lambda label: old_window_label(label, d["title"], d["session"]))
@@ -625,10 +632,18 @@ def main(argv=None):
     frontend = getattr(a, "frontend", "terminal")
     if frontend == "rex" and not shutil.which("rex"):
         return _err("--frontend rex: no `rex` command on PATH (install Rex, or use --frontend terminal)", 64)
+    if frontend == "desktop" and a.cmd == "restore":
+        return _err("--frontend desktop cannot resume a session: restore with --frontend terminal or rex", 64)
+    execs = frontend == "terminal" and a.cmd in STARTS and not (a.json or a.dry_run)
     code = {"status": cmd_status, "restore": cmd_restore, "new": cmd_new, "handoff": cmd_handoff,
             "ready": cmd_ready, "retire": cmd_retire}[a.cmd](a)
-    if code != 0 or frontend == "terminal" or getattr(a, "verify", False):
-        return code
+    if code != 0 or getattr(a, "verify", False) or a.cmd in ("status", "ready"):
+        return code  # a refusal keeps its own exit code
+    if execs and os.environ.get("CLAUDECODE"):  # a refusal only: CLAUDECODE never chooses the front-end
+        return _err("inside a Claude Code session the terminal front-end cannot run claude: use --frontend rex or "
+                    "--frontend desktop (or --dry-run to print the line)", 64)
+    if frontend == "terminal" and not execs:
+        return code  # printed: --dry-run, --json, or retire (the terminal cannot type into another pane)
     return _launch(a)
 
 

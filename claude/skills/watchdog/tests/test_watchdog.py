@@ -49,8 +49,17 @@ class Base(unittest.TestCase):
         self.dir.mkdir(parents=True)
         self.sessions.mkdir()
         self.procs = []
+        # a fake `claude` on PATH: a test never starts a real session; it logs its argv and cwd as JSON lines
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self.claude_log = self.root / "claude.log"
+        fake = self.bin / "claude"
+        fake.write_text(f"#!{sys.executable}\nimport json, os, sys\n"
+                        f"open({str(self.claude_log)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:], "
+                        f"'cwd': os.getcwd()}}) + '\\n')\n")
+        fake.chmod(0o755)
         self.env = {"HANDOFF_PROJECTS_DIR": str(self.projects), "HANDOFF_SESSIONS_DIR": str(self.sessions),
-                    "HANDOFF_CACHE_DIR": str(self.cache)}
+                    "HANDOFF_CACHE_DIR": str(self.cache), "PATH": f"{self.bin}:{os.environ['PATH']}"}
         self._old_env = {k: os.environ.get(k) for k in list(self.env) + ["HANDOFF_WINDOW_TOKENS",
                                                                           "CLAUDE_CODE_MAX_CONTEXT_TOKENS"]}
         os.environ.update(self.env)
@@ -281,7 +290,7 @@ class TestRestore(Base):
 
     def test_cli_text_json_and_warning(self):
         self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", tokens=600_000)
-        r = self.cli("restore", "--title", T, "--project-dir", PROJECT)
+        r = self.cli("restore", "--title", T, "--project-dir", PROJECT, "--dry-run")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"claude --resume {OLD_ID}", r.stdout)
         self.assertIn("WARNING", r.stdout)
@@ -464,12 +473,10 @@ UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
 
 class TestFrontendDefault(Base):
-    """1, 2: no --frontend = terminal: print only, the same output as before, no rex call, no detection."""
+    """1, 2: no --frontend = terminal; with --dry-run it prints only (the output of before), no rex call, no detection."""
 
     def setUp(self):
         super().setUp()
-        self.bin = self.root / "bin"
-        self.bin.mkdir()
         self.rex_log = self.root / "rex.log"
         stub = self.bin / "rex"
         stub.write_text(f'#!/bin/sh\necho "$@" >> {self.rex_log}\necho "{{}}"\n')
@@ -482,11 +489,12 @@ class TestFrontendDefault(Base):
             self.env.update(extra_env)
         out = {}
         self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
-        out["restore"] = self.cli("restore", "--title", T, "--project-dir", PROJECT)
+        out["restore"] = self.cli("restore", "--title", T, "--project-dir", PROJECT, "--dry-run")
         out["new"] = self.cli("new", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
-                              "--project-dir", PROJECT)
+                              "--project-dir", PROJECT, "--dry-run")
         pid = self.live(OLD_ID, f"{T} #aaaaaaaa")
-        out["handoff"] = self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT)
+        out["handoff"] = self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT,
+                                  "--dry-run")
         self.live(NEW_ID, f"{T} #bbbbbbbb")
         self.assertEqual(self.cli("ready", "--session", NEW_ID).returncode, 0)
         out["retire"] = self.cli("retire", "--session", OLD_ID, "--caller", NEW_ID)

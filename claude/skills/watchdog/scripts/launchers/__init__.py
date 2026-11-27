@@ -2,14 +2,14 @@
 
 watchdog.py decides; a launcher only starts, finds, types into and renames sessions of one front-end. A launcher has
 `name`, `caps` (the operations that really act) and the operations of `Launcher`. When a capability is missing,
-the caller prints the step for the owner (launchers/steps.py). The default front-end, terminal, has no launcher:
-watchdog.py prints its decision. Standard library only. No CLI: watchdog.py is the one entry point.
+the caller prints the step for the owner (launchers/steps.py). terminal (the default) execs claude in this terminal;
+desktop prints the start_session arguments; rex acts through Rex. Standard library only. No CLI: watchdog.py is the one entry point.
 """
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
 CAPS = frozenset({"start", "find_pane", "send", "rename", "find_ended"})
-NAMES = ("rex",)
+NAMES = ("terminal", "rex", "desktop")
 
 
 @dataclass(frozen=True)
@@ -52,4 +52,10 @@ def get(name, **opts):
     if name == "rex":
         from .rex import Rex
         return Rex(**opts)
+    if name == "terminal":
+        from .terminal import Terminal
+        return Terminal(**opts)
+    if name == "desktop":
+        from .desktop import Desktop
+        return Desktop(**opts)
     raise ValueError(f"unknown front-end {name!r}: use one of {', '.join(NAMES)}")

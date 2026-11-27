@@ -45,8 +45,6 @@ else:
 class CliBase(Base):
     def setUp(self):
         super().setUp()
-        self.bin = self.root / "bin"
-        self.bin.mkdir()
         self.rex_log = self.root / "rex.log"
         stub = self.bin / "rex"
         stub.write_text(STUB.format(py=sys.executable, log=str(self.rex_log)))
