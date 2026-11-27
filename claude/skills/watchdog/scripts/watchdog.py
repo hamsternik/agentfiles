@@ -26,6 +26,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(1, str(_HERE.parent.parent / "handoff-session-context" / "scripts"))  # context.py stays there
 import context  # noqa: E402
 import project  # noqa: E402
+import dqueue  # noqa: E402
 
 LIVE_SECONDS = 120
 SKILL_SCRIPTS = Path(os.path.abspath(__file__)).parent  # keeps the project link path when called through it
@@ -50,9 +51,11 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
   init     [--local]
            the project part and the decision queue from the templates (never overwrites); --local: git-exclude both
   public   public, private or unknown (gh repo view)
-  queue next-id
-           the next D-id of the decision queue (path: "Queue file:" in the project part, else
-           .claude/docs/decisions/queue.md)
+  queue next-id | add --item TEXT --default TEXT [--scope S] [--owner O] | list [--all] [--json]
+        | decide D<nn> ANSWER | default D<nn> | close
+           the decision queue (path: "Queue file:" in the project part, else .claude/docs/decisions/queue.md).
+           add: a new open row + one Inbox item (af inbox), and the 2 h wake-up line; default: only an open row
+           2 h old or more whose default does not start with "none"; close: rows done > 7 days go to "Closed"
   help     this text
 
 FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
@@ -536,13 +539,121 @@ def cmd_public(a):
     return 0
 
 
+def _now():
+    """Now in UTC; WATCHDOG_NOW (ISO) sets it for tests."""
+    if os.environ.get("WATCHDOG_NOW"):
+        return _parse(os.environ["WATCHDOG_NOW"])
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _af():
+    """The af CLI for the Inbox: $WATCHDOG_AF, else ~/.claude/inbox/af (install_inbox), else af on PATH; or None."""
+    if "WATCHDOG_AF" in os.environ:  # set (tests): only this one, never a fallback to the real Inbox
+        c = os.environ["WATCHDOG_AF"]
+        return c if c and os.access(c, os.X_OK) else None
+    for c in (str(Path.home() / ".claude/inbox/af"), shutil.which("af")):
+        if c and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def _inbox(args):
+    """Run `af inbox <args>`; the stdout, or None with a warning when there is no Inbox."""
+    import subprocess
+    af = _af()
+    if not af:
+        print("watchdog.py: no Inbox on this machine (no af): the queue row is enough", file=sys.stderr)
+        return None
+    r = subprocess.run([af, "inbox", *args], text=True, capture_output=True)
+    if r.returncode:
+        print(f"watchdog.py: af inbox {args[0]} failed ({r.returncode}): {r.stderr.strip()}", file=sys.stderr)
+        return None
+    return r.stdout.strip()
+
+
+INBOX_ID = re.compile(r"· Inbox (I-\d{8}-[0-9a-f]{4})$")
+
+
+def _answer(row, text):
+    m = INBOX_ID.search(row.get("item", ""))
+    if m:
+        _inbox(["answer", m.group(1), text])
+
+
+def _write(path, q):
+    path.write_text(q.text())
+
+
 def cmd_queue(a):
-    q = project.queue_path(_git_project(a))
-    if not q.is_file():
-        return _err(f"no queue file {q}: run `watchdog.py init`, or name it in the project part (Queue file:)", 1)
+    proj = _git_project(a)
+    path = project.queue_path(proj)
+    if not path.is_file():
+        return _err(f"no queue file {path}: run `watchdog.py init`, or name it in the project part (Queue file:)", 1)
+    text = path.read_text(errors="ignore")
     if a.qcmd == "next-id":
-        print(project.next_id(q.read_text(errors="ignore")))
+        print(project.next_id(text))
         return 0
+    now = _now()
+    try:
+        q = dqueue.Queue(text)
+        if a.qcmd == "add":
+            rid = project.next_id(path.read_text(errors="ignore"))  # read again just before the write
+            item = a.item
+            iid = _inbox(["add", "--type", "decision", "--title", a.item, "--ref", rid, "--project", proj.name,
+                          "--default", a.default])
+            if iid:
+                item = f"{a.item} · Inbox {iid}"
+            q.add({"id": rid, "opened": now.strftime("%Y-%m-%d %H:%M UTC"), "item": item, "scope": a.scope or "",
+                   "default": a.default, "owner": a.owner, "status": "open"})
+            _write(path, q)
+            wake = now + datetime.timedelta(hours=dqueue.DEFAULT_AFTER_HOURS)
+            local = wake.astimezone()
+            prompt = f"watchdog queue default {rid}"
+            print(f"added {rid}" + (f" (Inbox {iid})" if iid else ""))
+            print(f'wake-up: ScheduleWakeup delaySeconds={dqueue.DEFAULT_AFTER_HOURS * 3600} prompt="{prompt}"')
+            print(f'fallback: CronCreate cron="{local.minute} {local.hour} {local.day} {local.month} *" '
+                  f'recurring=false prompt="{prompt}"')
+            return 0
+        if a.qcmd == "list":
+            rows = [r for r in q.rows() if a.all or r.get("status") == "open"]
+            if a.json:
+                print(json.dumps([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]))
+                return 0
+            for r in rows:
+                age = dqueue.age_hours(r, now)
+                status = r.get("status", "")
+                print(f"{r['id']}  {'open' if status == 'open' else status}  "
+                      f"{'?' if age is None else f'{age:.0f}'} h  {r.get('item', '')}  "
+                      f"(default: {r.get('default', '')})")
+            return 0
+        if a.qcmd == "decide":
+            row = q.row(a.id)
+            if row.get("status") != "open":
+                return _err(f"{a.id} is not open ({row.get('status')})", 2)
+            q.set(a.id, "status", f"decided {now:%Y-%m-%d}: {a.answer}")
+            _write(path, q)
+            _answer(row, a.answer)
+            print(f"decided {a.id}")
+            return 0
+        if a.qcmd == "default":
+            row = q.row(a.id)
+            why = dqueue.default_refusal(row, now)
+            if why:
+                return _err(why, 2)
+            status = f"default taken {now:%Y-%m-%d %H:%M} UTC: {row['default']}"
+            q.set(a.id, "status", status)
+            _write(path, q)
+            _answer(row, status)
+            print(f"{a.id}: {status}")
+            return 0
+        if a.qcmd == "close":
+            moved = q.close(now)
+            if moved:
+                _write(path, q)
+            print("closed " + (", ".join(moved) if moved else "nothing"))
+            return 0
+    except dqueue.QueueError as e:
+        return _err(str(e), e.code)
     return _err(f"unknown queue command {a.qcmd!r}", 64)
 
 
@@ -649,6 +760,20 @@ def main(argv=None):
     p = add("queue")
     qs = p.add_subparsers(dest="qcmd", required=True)
     qs.add_parser("next-id")
+    q = qs.add_parser("add")
+    q.add_argument("--item", required=True)
+    q.add_argument("--default", required=True, help='the decision after 2 h; "none: <why>" = never a default')
+    q.add_argument("--scope")
+    q.add_argument("--owner", default="owner")
+    q = qs.add_parser("list")
+    q.add_argument("--all", action="store_true")
+    q.add_argument("--json", action="store_true")
+    q = qs.add_parser("decide")
+    q.add_argument("id")
+    q.add_argument("answer")
+    q = qs.add_parser("default")
+    q.add_argument("id")
+    qs.add_parser("close")
     a = ap.parse_args(argv)
     if a.cmd in ("init", "public", "queue"):
         try:
