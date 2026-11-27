@@ -256,7 +256,7 @@ def install_statusline(settings, command, today=None):
     data["statusLine"] = {"type": "command", "command": command}
     settings.parent.mkdir(parents=True, exist_ok=True)
     tmp = settings.with_name(f".{settings.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")  # keep "—" as it is
     tmp.replace(settings)
     return result
 
@@ -311,7 +311,7 @@ def install_hook(settings, today=None, command=HOOK_COMMAND):
     stop.append({"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 10}]})
     settings.parent.mkdir(parents=True, exist_ok=True)
     tmp = settings.with_name(f".{settings.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")  # keep "—" as it is
     tmp.replace(settings)
     return "added"
 

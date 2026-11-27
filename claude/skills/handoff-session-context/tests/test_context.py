@@ -261,6 +261,15 @@ class TestInstallStatusline(Tmp):
         self.assertEqual(context.install_statusline(s, self.CMD), "present")
         self.assertEqual(s.read_text(), text)
 
+    def test_keeps_non_ascii_text_as_it_is(self):
+        """A hand-edited file keeps its "—" and "é": no \\u escapes in the diff (SM report, 2026-11-26)."""
+        s = self.tmp / "settings.json"
+        s.write_text('{\n  "note": "a — b, café"\n}\n', encoding="utf-8")
+        context.install_statusline(s, self.CMD)
+        text = s.read_text(encoding="utf-8")
+        self.assertIn("a — b, café", text)
+        self.assertNotIn("\\u", text)
+
     def test_a_new_clone_path_updates_our_line(self):
         s = self.tmp / "settings.json"
         context.install_statusline(s, 'sh "/old/clone/claude/statusline.sh"')
@@ -310,6 +319,14 @@ class TestInstallHook(Tmp):
     def stop_commands(self, settings):
         d = json.loads(settings.read_text())
         return [h["command"] for g in d.get("hooks", {}).get("Stop", []) for h in g.get("hooks", [])]
+
+    def test_keeps_non_ascii_text_as_it_is(self):
+        s = self.tmp / "settings.local.json"
+        s.write_text('{\n  "note": "a — b"\n}\n', encoding="utf-8")
+        context.install_hook(s)
+        text = s.read_text(encoding="utf-8")
+        self.assertIn("a — b", text)
+        self.assertNotIn("\\u", text)
 
     def test_creates_the_file_when_missing(self):
         s = self.tmp / "settings.json"
