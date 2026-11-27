@@ -134,7 +134,7 @@ class TestList(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = r.stdout.splitlines()
         self.assertEqual(len(lines), 1, lines)
-        self.assertTrue(lines[0].startswith("D62  open  204 h"), lines[0])
+        self.assertTrue(lines[0].startswith("D62  open  since 2026-11-18  "), lines[0])  # a date only: no hours
 
     def test_all(self):
         lines = self.cli("list", "--all").stdout.splitlines()
@@ -190,6 +190,13 @@ class TestDefault(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.rows()[0]["status"], "default taken 2026-11-26 14:00 UTC: A")
         self.assertIn("inbox answer I-20261126-ab12 default taken", self.af_calls()[-1])
+
+    def test_date_only_row_counts_from_the_end_of_its_day(self):
+        """A row with a date only (written by hand) may have been made at 23:59: no default on that day."""
+        self.q.write_text(SHELF.replace("| D62 | 2026-11-18 | old open item | a | none: the owner decides |",
+                                        "| D62 | 2026-11-26 | old open item | a | A |"))
+        self.assertEqual(self.cli("default", "D62", now="2026-11-26T23:00:00Z").returncode, 2)
+        self.assertEqual(self.cli("default", "D62", now="2026-11-27T02:00:00Z").returncode, 0)
 
     def test_decided_row_is_left_alone(self):
         self.cli("add", "--item", "Pick", "--default", "A")

@@ -61,8 +61,8 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
   help     this text
 
 FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
-  terminal (the default) runs the claude line in this terminal (restore, new, handoff); --dry-run (or --json) only
-  prints it. It refuses inside a Claude Code session ($CLAUDECODE): use rex or desktop there. retire only prints.
+  --dry-run (or --json) only prints, on every front-end. terminal (the default) runs the claude line in this
+  terminal (restore, start, handoff). It refuses inside a Claude Code session ($CLAUDECODE): use rex or desktop there. retire only prints.
   desktop prints the start_session arguments (title, cwd, model, prompt) as JSON; it cannot restore or type.
   rex starts the window (restore, new, handoff) or types into the pane (retire) through Rex, from a Rex pane or a
   plain terminal. The Rex session is the one labelled with the project folder name (made when missing); --rex S
@@ -591,8 +591,7 @@ def _answer(row, text):
 
 
 def _row_line(r, now):
-    age = dqueue.age_hours(r, now)
-    return (f"{r['id']}  {r.get('status', '')}  {'?' if age is None else f'{age:.0f}'} h  {r.get('item', '')}  "
+    return (f"{r['id']}  {r.get('status', '')}  {dqueue.age_text(r, now)}  {r.get('item', '')}  "
             f"(default: {r.get('default', '')})")
 
 

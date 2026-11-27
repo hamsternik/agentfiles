@@ -144,9 +144,30 @@ class Queue:
         return [r["id"] for r in old]
 
 
+def has_time(text):
+    return bool(re.match(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}", text or ""))
+
+
 def age_hours(row, now):
-    t = parse_time(row.get("opened", ""))
-    return None if t is None else (now - t).total_seconds() / 3600
+    """Hours since the row was opened. A date only (a row written by hand) counts from the end of that day, so a
+    2 h default never comes too early."""
+    opened = row.get("opened", "")
+    t = parse_time(opened)
+    if t is None:
+        return None
+    if not has_time(opened):
+        t += datetime.timedelta(days=1)
+    return (now - t).total_seconds() / 3600
+
+
+def age_text(row, now):
+    """"<n> h" for a row with a time; "since <date>" for a date only; "?" for none."""
+    opened = row.get("opened", "")
+    if parse_time(opened) is None:
+        return "?"
+    if not has_time(opened):
+        return f"since {opened[:10]}"
+    return f"{age_hours(row, now):.0f} h"
 
 
 def default_refusal(row, now, hours=DEFAULT_AFTER_HOURS):
