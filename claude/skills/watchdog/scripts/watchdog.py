@@ -56,6 +56,8 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
            the decision queue (path: "Queue file:" in the project part, else .claude/docs/decisions/queue.md).
            add: a new open row + one Inbox item (af inbox), and the 2 h wake-up line; default: only an open row
            2 h old or more whose default does not start with "none"; close: rows done > 7 days go to "Closed"
+  whatsup  one screen: the watchdog sessions of the project, the open D-rows with age, the git state (commits not
+           pushed, changed files), the Inbox outbox; the skill adds the Inbox items (ArtifactData)
   help     this text
 
 FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
@@ -580,6 +582,60 @@ def _answer(row, text):
         _inbox(["answer", m.group(1), text])
 
 
+def _row_line(r, now):
+    age = dqueue.age_hours(r, now)
+    return (f"{r['id']}  {r.get('status', '')}  {'?' if age is None else f'{age:.0f}'} h  {r.get('item', '')}  "
+            f"(default: {r.get('default', '')})")
+
+
+def _git_out(proj, *args):
+    import subprocess
+    r = subprocess.run(["git", "-C", str(proj), *args], text=True, capture_output=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def cmd_whatsup(a):
+    """One screen: the watchdog sessions, the open D-rows, the git state, the Inbox outbox."""
+    proj = _git_project(a)
+    now = _now()
+    print(f"== {proj.name}  ({now:%Y-%m-%d %H:%M} UTC)")
+    rows = status_rows(None, str(proj))
+    print("Sessions:" if rows else "Sessions: no watchdog session in this project")
+    for r in rows:
+        live = f"pid {r['pid']} {r['status'] or ''}".strip() if r["pid"] else "not running"
+        print(f"  {r['name']}  {live}  last {r['last']}  context {r['pct']} % ({r['level']})")
+    path = project.queue_path(proj)
+    if not path.is_file():
+        print(f"Queue: no queue ({path.relative_to(proj)})")
+    else:
+        try:
+            open_rows = [r for r in dqueue.Queue(path.read_text(errors="ignore")).rows() if r.get("status") == "open"]
+        except dqueue.QueueError as e:
+            open_rows = None
+            print(f"Queue: {e}")
+        if open_rows is not None:
+            print(f"Queue ({path.relative_to(proj)}): {_plural(len(open_rows), 'open row')}")
+            for r in open_rows:
+                print("  " + _row_line(r, now))
+    branch = _git_out(proj, "rev-parse", "--abbrev-ref", "HEAD") or "?"
+    ahead = _git_out(proj, "rev-list", "--count", "@{u}..HEAD")
+    dirty = [x for x in (_git_out(proj, "status", "--porcelain") or "").splitlines() if x]
+    push = "no upstream" if ahead is None else f"{_plural(int(ahead), 'commit')} not pushed"
+    print(f"Git: {branch}, {push}, {_plural(len(dirty), 'file')} changed")
+    st = _inbox(["status"]) if _af() else None
+    if st is None:
+        print("Inbox: not set up on this machine")
+    else:
+        n = dict(x.split("=", 1) for x in st.splitlines() if "=" in x).get("outbox", "0")
+        print(f"Inbox: {n} changes wait in the outbox" + (" (flush: skill triage-inbox)" if n != "0" else ""))
+    print("Inbox items of the project: the skill reads them (triage-inbox, ArtifactData)")
+    return 0
+
+
 def _write(path, q):
     path.write_text(q.text())
 
@@ -620,11 +676,7 @@ def cmd_queue(a):
                 print(json.dumps([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]))
                 return 0
             for r in rows:
-                age = dqueue.age_hours(r, now)
-                status = r.get("status", "")
-                print(f"{r['id']}  {'open' if status == 'open' else status}  "
-                      f"{'?' if age is None else f'{age:.0f}'} h  {r.get('item', '')}  "
-                      f"(default: {r.get('default', '')})")
+                print(_row_line(r, now))
             return 0
         if a.qcmd == "decide":
             row = q.row(a.id)
@@ -757,6 +809,7 @@ def main(argv=None):
     p = add("init")
     p.add_argument("--local", action="store_true", help="hide the 2 files in the repo's git exclude file")
     add("public")
+    add("whatsup")
     p = add("queue")
     qs = p.add_subparsers(dest="qcmd", required=True)
     qs.add_parser("next-id")
@@ -775,9 +828,9 @@ def main(argv=None):
     q.add_argument("id")
     qs.add_parser("close")
     a = ap.parse_args(argv)
-    if a.cmd in ("init", "public", "queue"):
+    if a.cmd in ("init", "public", "queue", "whatsup"):
         try:
-            return {"init": cmd_init, "public": cmd_public, "queue": cmd_queue}[a.cmd](a)
+            return {"init": cmd_init, "public": cmd_public, "queue": cmd_queue, "whatsup": cmd_whatsup}[a.cmd](a)
         except project.ProjectError as e:
             return _err(str(e), 1)
     a.project_dir = a.project_dir or default_project_dir()
