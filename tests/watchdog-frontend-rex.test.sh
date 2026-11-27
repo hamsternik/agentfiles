@@ -148,7 +148,7 @@ pid_gone() { ! kill -0 "$1" 2>/dev/null; }
 
 # 23. new → rex window new with the suffixed label and the claude --session-id line, then the name wait
 setup
-run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
+run start --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
 check "23 new: exits 0"                         [ "$rc" = 0 ]
 check "23 new: one window new with -c and --keep-open" grep -qE "^window new -s proj watchdog-master #[0-9a-f]{8} -c $PROJECT --keep-open -- claude --session-id [0-9a-f-]{36} --model claude-opus-5-5 -n $TRE #[0-9a-f]{8} --remote-control $TRE #" "$st/log"
 check "23 new: label suffix = name suffix"     python3 -c 'import re,sys; l=open(sys.argv[1]).read(); a=re.search(r"watchdog-master #([0-9a-f]{8})",l).group(1); b=re.search(r" #([0-9a-f]{8}) --remote",l).group(1); c=re.search(r"--session-id ([0-9a-f]{8})",l).group(1); sys.exit(0 if a==b==c else 1)' "$st/log"
@@ -157,7 +157,7 @@ teardown
 
 # 23b. --rex S overrides the project session: window new -s S, no session lookup
 setup
-run new --title "$T" --model claude-opus-5-5 --frontend rex --rex S --project-dir "$PROJECT"
+run start --title "$T" --model claude-opus-5-5 --frontend rex --rex S --project-dir "$PROJECT"
 check "23b --rex: window new -s S"              grep -qE "^window new -s S watchdog-master #" "$st/log"
 check "23b --rex: no session ls"                not_logged "^session ls"
 teardown
@@ -165,7 +165,7 @@ teardown
 # 32. no Rex session named after the project → one session new that also starts the watchdog
 setup
 printf '{"sessions":[{"session_id":"session:s0","label":"other"}]}\n' > "$st/rex-sessions.json"
-run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
+run start --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
 check "32 session new: exits 0"                 [ "$rc" = 0 ]
 check "32 session new: one call with the window" grep -qE "^session new proj --window watchdog-master #[0-9a-f]{8} -c $PROJECT --keep-open -- claude --session-id " "$st/log"
 check "32 session new: no window new"           not_logged "^window new"
@@ -175,7 +175,7 @@ teardown
 # 24. new while T is live → no Rex call, exit 2
 setup
 python3 "$st/sim.py" spawn "$OLD_ID" "$T #aaaaaaaa" "$PROJECT" > /dev/null
-run new --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
+run start --title "$T" --model claude-opus-5-5 --frontend rex --project-dir "$PROJECT"
 check "24 new while live: exit 2"               [ "$rc" = 2 ]
 check "24 new while live: no Rex call"          [ ! -s "$st/log" ]
 teardown
@@ -276,7 +276,7 @@ teardown
 setup
 run help
 check "31 help: exits 0"                        [ "$rc" = 0 ]
-for c in new restore handoff retire help; do
+for c in start restore handoff retire help; do
   check "31 help: lists $c"                     grep -qE "^  $c +" <<< "$out"
 done
 teardown

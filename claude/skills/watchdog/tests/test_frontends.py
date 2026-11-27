@@ -45,11 +45,11 @@ class FrontBase(Base):
 # 5. the default front-end runs claude in this terminal
 class TestTerminalExec(FrontBase):
     def test_new_execs_claude_with_the_plan_argv_in_the_project(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj))
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj))
         self.assertEqual(r.returncode, 0, r.stderr)
         runs = self.execs()
         self.assertEqual(len(runs), 1, r.stdout + r.stderr)
-        plan = json.loads(self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir",
+        plan = json.loads(self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir",
                                    str(self.proj), "--json").stdout)
         self.assertEqual(runs[0]["argv"][:2], ["--session-id", runs[0]["argv"][1]])
         self.assertEqual(runs[0]["argv"][2:4], plan["argv"][3:5])  # --model <m>
@@ -63,22 +63,22 @@ class TestTerminalExec(FrontBase):
         self.assertEqual(runs[0]["argv"][:2], ["--resume", OLD_ID])
 
     def test_dry_run_and_json_never_exec(self):
-        self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj), "--dry-run")
-        self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj), "--json")
+        self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj), "--dry-run")
+        self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj), "--json")
         self.assertEqual(self.execs(), [])
 
 
 # 6. inside a Claude session the terminal front-end refuses
 class TestTerminalInsideClaude(FrontBase):
     def test_claudecode_set_exit_64_no_exec(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
                      claudecode="1")
         self.assertEqual(r.returncode, 64)
         self.assertIn("--frontend rex", r.stderr)
         self.assertEqual(self.execs(), [])
 
     def test_dry_run_inside_claude_still_prints(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
                      "--dry-run", claudecode="1")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("claude --session-id", r.stdout)
@@ -87,7 +87,7 @@ class TestTerminalInsideClaude(FrontBase):
 # 7. desktop prints the start_session arguments
 class TestDesktop(FrontBase):
     def test_new_prints_one_json_object(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
                      "--first-prompt", "Read x.md first.", "--frontend", "desktop", claudecode="1")
         self.assertEqual(r.returncode, 0, r.stderr)
         d = json.loads(r.stdout)
@@ -125,7 +125,7 @@ class TestRetireNoTyping(FrontBase):
 # 9. no detection: REX_SESSION never chooses the front-end
 class TestNoDetection(FrontBase):
     def test_rex_session_set_still_terminal(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", str(self.proj),
                      extra={"REX_SESSION": "session:x", "REX_BLOCK": "block:y"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(self.execs()), 1)

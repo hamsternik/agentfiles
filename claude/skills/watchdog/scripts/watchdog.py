@@ -36,8 +36,10 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
            the sessions of T (or of every watchdog title): id, pid, name, status, last activity, context
   restore  --title T [--effort E] [FRONT-END]
            the latest session of T and its `claude --resume` line; refused while it still runs
-  new      --title T --model M [--first-prompt TEXT | --prompt-file F] [--effort E] [--owner-said-fable] [FRONT-END]
-           a new session id and the `claude --session-id ... -n "T #id"` line; refused while T runs
+  start    --model M [--machine NAME] [--title T] [--first-prompt TEXT | --prompt-file F] [--effort E]
+           [--owner-said-fable] [FRONT-END]
+           a new watchdog: T = "<project> (watchdog)", or "(watchdog-<machine>)" when the project part lists 2+
+           machines; the session name is "T #<short id>"; first prompt: run the project part; refused while T runs
   handoff  --title T --handoff-file F [--session ID] [--prompt-file F] [--effort E] [--owner-said-fable] [FRONT-END]
            the successor of the live session of T (same model) and the old session's pid
   ready    --session ID
@@ -67,7 +69,7 @@ Env: WATCHDOG_WAIT (s, 60: name wait), WATCHDOG_VERIFY (tries, 10: rename check)
 """
 
 SUFFIX = re.compile(r" #[0-9a-f]{8}$")
-STARTS = ("restore", "new", "handoff")  # the commands that start a session
+STARTS = ("restore", "start", "handoff")  # the commands that start a session
 
 
 # ---- names ---------------------------------------------------------------------------------------------------------
@@ -409,7 +411,29 @@ def _first_prompt(a):
     return getattr(a, "first_prompt", "") or ""
 
 
-def cmd_new(a):
+def start_title(a):
+    """(title, error): --title, else "<project> (watchdog)", or "<project> (watchdog-<machine>)" when the project part
+    lists 2 or more machines (then --machine must name one of them)."""
+    if a.title:
+        return a.title, None
+    name = Path(a.project_dir).name
+    ms = project.machines(a.project_dir)
+    if len(ms) < 2:
+        return f"{name} (watchdog)", None
+    if a.machine not in ms:
+        return None, (f"the project part lists {len(ms)} machines ({', '.join(ms)}): give --machine <one of them>"
+                      if not a.machine else f"--machine {a.machine}: not in the project part ({', '.join(ms)})")
+    return f"{name} (watchdog-{a.machine})", None
+
+
+def cmd_start(a):
+    a.title, err = start_title(a)
+    if err:
+        return _err(err, 64)
+    if not (a.prompt_file or a.first_prompt):
+        part = project.part_path(a.project_dir)
+        if part.exists():
+            a.first_prompt = f"Run {part.relative_to(a.project_dir)}."
     live = live_of_title(a.title)
     if live:
         return _err(f"a session of {a.title!r} still runs: {live[0].get('name')} (pid {live[0]['pid']})", 2)
@@ -552,7 +576,7 @@ def _launch(a):
     d = a.decision
     wait = _env_num("WATCHDOG_WAIT", 60)
     try:
-        if a.cmd == "new":
+        if a.cmd == "start":
             return steps.start(launcher, d, d["name"], wait_name, wait)
         if a.cmd == "restore" and a.frontend == "terminal":
             return steps.start(launcher, d, d["title"], wait_name, wait)
@@ -574,6 +598,8 @@ def main(argv=None):
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(HELP, end="")
         return 0
+    if argv[0] == "new":
+        return _err("`new` is now `start`: start --model M [--machine NAME] [--title T] ... (watchdog.py help)", 64)
     ap = _Parser(prog="watchdog.py", add_help=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -592,8 +618,9 @@ def main(argv=None):
     p.add_argument("--title", required=True)
     p.add_argument("--effort")
     _frontend(p)
-    p = add("new")
-    p.add_argument("--title", required=True)
+    p = add("start")
+    p.add_argument("--title", help="default: <project> (watchdog), or (watchdog-<machine>) for 2+ machines")
+    p.add_argument("--machine", help="this machine, when the project part lists 2 or more machines")
     p.add_argument("--model", required=True)
     g = p.add_mutually_exclusive_group()
     g.add_argument("--first-prompt")
@@ -635,7 +662,7 @@ def main(argv=None):
     if frontend == "desktop" and a.cmd == "restore":
         return _err("--frontend desktop cannot resume a session: restore with --frontend terminal or rex", 64)
     execs = frontend == "terminal" and a.cmd in STARTS and not (a.json or a.dry_run)
-    code = {"status": cmd_status, "restore": cmd_restore, "new": cmd_new, "handoff": cmd_handoff,
+    code = {"status": cmd_status, "restore": cmd_restore, "start": cmd_start, "handoff": cmd_handoff,
             "ready": cmd_ready, "retire": cmd_retire}[a.cmd](a)
     if code != 0 or getattr(a, "verify", False) or a.cmd in ("status", "ready"):
         return code  # a refusal keeps its own exit code

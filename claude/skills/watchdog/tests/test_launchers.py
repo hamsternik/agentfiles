@@ -60,15 +60,15 @@ class CliBase(Base):
 
 class TestCliFrontend(CliBase):
     def test_frontend_rex_uses_rex_and_unknown_is_usage(self):  # 3
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
         self.assertIn(["window", "new"], [c[:2] for c in self.rex_calls()], r.stderr)
         self.rex_log.unlink()
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "x")
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "x")
         self.assertEqual(r.returncode, 64, r.stderr)
         self.assertEqual(self.rex_calls(), [])
 
     def test_label_option_is_usage(self):  # 4
-        for cmd in (["new", "--model", "claude-opus-5-5"], ["restore"]):
+        for cmd in (["start", "--model", "claude-opus-5-5"], ["restore"]):
             r = self.cli(cmd[0], "--title", T, *cmd[1:], "--project-dir", PROJECT, "--frontend", "rex",
                          "--label", "x")
             self.assertEqual(r.returncode, 64, f"{cmd[0]}: {r.stderr}")
@@ -76,7 +76,7 @@ class TestCliFrontend(CliBase):
 
     def test_frontend_rex_without_rex_on_path(self):  # 5
         self.env["PATH"] = str(self.root / "empty")
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
         self.assertEqual(r.returncode, 64, r.stderr)
         self.assertIn("rex", r.stderr)
         self.assertEqual(r.stdout, "")
@@ -90,7 +90,7 @@ class TestCliFrontend(CliBase):
         self.assertEqual(self.rex_calls(), [])
 
     def test_new_without_the_name_in_time_exit_5(self):  # 13
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--frontend", "rex")
         self.assertEqual(r.returncode, 5, r.stderr)
         news = [c for c in self.rex_calls() if c[:2] == ["window", "new"]]
         self.assertEqual(len(news), 1)
@@ -147,7 +147,7 @@ class TestNames(Base):
             d = json.loads(r.stdout)
             seen.append((d["window_label"], d["title"]))
         self.assertEqual(seen, [("watchdog-master #aaaaaaaa", f"{T} #aaaaaaaa")] * 3)
-        n = json.loads(self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT,
+        n = json.loads(self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT,
                                 "--json").stdout)
         self.assertEqual(n["window_label"], f"watchdog-master #{n['session'][:8]}")
 

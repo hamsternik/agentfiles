@@ -57,7 +57,7 @@ check "watchdog.py is no longer here"            [ ! -e "$skill/scripts/watchdog
 check "rex-watchdog.sh is gone"                 [ ! -e "$skill/scripts/rex-watchdog.sh" ]
 check "the launchers package moved"             [ -f "$repo/claude/skills/watchdog/scripts/launchers/__init__.py" ]
 # shellcheck disable=SC2016
-for cmd in '$W handoff' '$W retire' '$W restore' '$W new' '$W ready' '$W status' '$W help'; do
+for cmd in '$W handoff' '$W retire' '$W restore' '$W start' '$W ready' '$W status' '$W help'; do
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
 done
 check "SKILL.md no longer uses latest.py"       lacks "$skill/SKILL.md" 'latest\.py'

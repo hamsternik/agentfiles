@@ -316,16 +316,16 @@ class TestRestore(Base):
 class TestNew(Base):
     def test_live_session_of_title_refused(self):
         self.live(OLD_ID, f"{T} #aaaaaaaa")
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--json")
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT, "--json")
         self.assertEqual((r.returncode, r.stdout), (2, ""))
 
     def test_fable_needs_the_owner_word(self):
-        args = ["new", "--title", T, "--model", "claude-fable-5-2", "--project-dir", PROJECT, "--json"]
+        args = ["start", "--title", T, "--model", "claude-fable-5-2", "--project-dir", PROJECT, "--json"]
         self.assertEqual(self.cli(*args).returncode, 4)
         self.assertEqual(self.cli(*args, "--owner-said-fable").returncode, 0)
 
     def test_argv_names_and_prompt_tail(self):
-        r = self.cli("new", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT,
+        r = self.cli("start", "--title", T, "--model", "claude-opus-5-5", "--project-dir", PROJECT,
                      "--first-prompt", "Read docs/prompts/x.md first.", "--json")
         self.assertEqual(r.returncode, 0, r.stderr)
         d = json.loads(r.stdout)
@@ -463,7 +463,7 @@ class TestHelp(Base):
         for args in (["help"], []):
             r = self.cli(*args)
             self.assertEqual(r.returncode, 0, r.stderr)
-            for sub in ("status", "restore", "new", "handoff", "ready", "retire", "help"):
+            for sub in ("status", "restore", "start", "handoff", "ready", "retire", "help"):
                 self.assertRegex(r.stdout, rf"(?m)^\s*{sub}\b.+", sub)
 
 
@@ -490,7 +490,7 @@ class TestFrontendDefault(Base):
         out = {}
         self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
         out["restore"] = self.cli("restore", "--title", T, "--project-dir", PROJECT, "--dry-run")
-        out["new"] = self.cli("new", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
+        out["start"] = self.cli("start", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
                               "--project-dir", PROJECT, "--dry-run")
         pid = self.live(OLD_ID, f"{T} #aaaaaaaa")
         out["handoff"] = self.cli("handoff", "--title", T, "--handoff-file", "h.md", "--project-dir", PROJECT,
@@ -508,7 +508,7 @@ class TestFrontendDefault(Base):
         return out
 
     def check(self, out):
-        for cmd in ("restore", "new", "handoff", "retire"):
+        for cmd in ("restore", "start", "handoff", "retire"):
             self.assertEqual(out[cmd].returncode, 0, f"{cmd}: {out[cmd].stderr}")
         self.assertFalse(self.rex_log.exists(), "a rex call: " + (self.rex_log.read_text() if self.rex_log.exists() else ""))
         # 1a restore: summary line, then the claude --resume line with the restore prompt last
@@ -518,8 +518,8 @@ class TestFrontendDefault(Base):
         self.assertEqual(argv[:3], ["claude", "--resume", OLD_ID])
         self.assertEqual(argv[-1], wd.RESTORE_PROMPT)
         # 1b new: one claude --session-id line
-        self.assertRegex(out["new"].stdout, rf"\Aclaude --session-id {UUID_RE} --model claude-opus-5-5 -n ")
-        self.assertEqual(len(out["new"].stdout.splitlines()), 1)
+        self.assertRegex(out["start"].stdout, rf"\Aclaude --session-id {UUID_RE} --model claude-opus-5-5 -n ")
+        self.assertEqual(len(out["start"].stdout.splitlines()), 1)
         # 1c handoff: old line, then the claude line
         h = out["handoff"].stdout.splitlines()
         self.assertEqual(h[0], f"old {T} #aaaaaaaa (pid {out['pid']})")
@@ -549,7 +549,7 @@ class TestContract(Base):
         self.session(OLD_ID, "u1", "2026-11-24T10:00:00Z", title=f"{T} #aaaaaaaa")
         r = json.loads(self.cli("restore", "--title", T, "--project-dir", PROJECT, "--json").stdout)
         self.assertLessEqual({"session", "title", "argv", "warning", "older_forks", "project_dir", "window_label"}, set(r))
-        n = json.loads(self.cli("new", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
+        n = json.loads(self.cli("start", "--title", "other (watchdog)", "--model", "claude-opus-5-5",
                                 "--project-dir", PROJECT, "--json").stdout)
         self.assertLessEqual({"session", "short", "name", "argv", "project_dir", "window_label"}, set(n))
         self.live(OLD_ID, f"{T} #aaaaaaaa")

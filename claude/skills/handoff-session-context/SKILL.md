@@ -65,7 +65,7 @@ the title (`proj (watchdog-master)` → `watchdog-master #de18597a`). `python3 $
 
 - `python3 $W status [--title T]`: the sessions of a watchdog title (id, pid, name, context %, last activity);
   exit 3 on 2 live sessions of one title. `--check-files <files>` lists stale ids in prompt or memory files (no edit).
-- **New watchdog:** `python3 $W new --title T --model <m> [--prompt-file <prompt>] --frontend rex`. It refuses
+- **New watchdog:** `python3 $W start --model <m> [--machine <m>] [--prompt-file <prompt>] --frontend rex`. It refuses
   while T runs.
 - **Restore** (after Ctrl-C, an upgrade, a crash; the owner asks "restore the watchdog"):
   `python3 $W restore --title T --frontend rex`. It refuses while the old session runs or was active in
