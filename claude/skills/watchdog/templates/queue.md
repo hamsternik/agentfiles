@@ -1,7 +1,7 @@
 # Decision queue
 
 Every open decision for the owner is one row here, with a default, an owner and a date. The watchdog adds a row when it asks
-the owner a question (skill `start-project-watchdog`, rules.md rule 3) and adds one Inbox item with `links.ref` = the id.
+the owner a question (`watchdog.py queue add`, skill `watchdog`, rules.md rule 3); that also adds one Inbox item with `links.ref` = the id.
 The owner decides in chat; the session that gets the answer writes `decided <YYYY-MM-DD>: <answer>` into the status and acts.
 After 2 h with no answer the watchdog takes the default and writes `default taken <YYYY-MM-DD HH:MM UTC>: <decision>`.
 Never a default for a deletion, a plan or spec, a rule text, a commit or push, or a write to a shared or external system.
