@@ -194,6 +194,16 @@ class TestProjectPart(Base):
                                "| master | ~/x | ssh | |\n| slave | ~/x | ssh | |\n" + text[end:])
         self.assertEqual(project.machines(str(self.proj)), ["master", "slave"])
 
+    def test_machine_name_in_parentheses(self):
+        """A cell "MM (master)" names the machine "master": the title role is (watchdog-master)."""
+        self.cli("init")
+        text = self.part().read_text()
+        start = text.index("## Machines")
+        end = text.index("\n## ", start + 1)
+        self.part().write_text(text[:start] + "## Machines\n\n| Machine | Checkout | Reach | Notes |\n|---|---|---|---|\n"
+                               "| MM (master) | ~/x | ssh | |\n| SM (slave) | ~/x | ssh | |\n" + text[end:])
+        self.assertEqual(project.machines(str(self.proj)), ["master", "slave"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,7 +54,8 @@ def queue_path(project_dir):
 
 
 def machines(project_dir):
-    """The machine names in the "## Machines" table of the project part (placeholders like <master> left out)."""
+    """The machine names in the "## Machines" table of the project part (placeholders like <master> left out; a cell
+    "MM (master)" gives "master")."""
     text = _part_text(project_dir)
     m = re.search(r"^## Machines\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
     out = []
@@ -64,7 +65,8 @@ def machines(project_dir):
             continue
         if cells[0].lower() == "machine":
             continue
-        out.append(cells[0])
+        m = re.search(r"\(([^()]+)\)\s*$", cells[0])  # "MM (master)" names the machine "master"
+        out.append(m.group(1).strip() if m else cells[0])
     return out
 
 
