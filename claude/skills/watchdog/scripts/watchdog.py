@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""watchdog.py — the session logic of a project watchdog (skill handoff-session-context, CLI v2).
+"""watchdog.py — the session logic of a project watchdog (skill watchdog; was in handoff-session-context, CLI v2).
 
 Reads the transcripts (~/.claude/projects/<slug>/), the live sessions (~/.claude/sessions/<pid>.json) and the context
 size (context.py). It decides; it knows no front-end. `--frontend rex` hands the decision to a launcher
@@ -21,7 +21,9 @@ import time
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_HERE = Path(__file__).resolve().parent  # the real folder in the clone (the skill link resolves to it)
+sys.path.insert(0, str(_HERE))
+sys.path.insert(1, str(_HERE.parent.parent / "handoff-session-context" / "scripts"))  # context.py stays there
 import context  # noqa: E402
 
 LIVE_SECONDS = 120

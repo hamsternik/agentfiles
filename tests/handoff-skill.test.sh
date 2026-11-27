@@ -21,6 +21,7 @@ links_to() { [[ -L "$1" && "$(readlink "$1")" == "$2" ]]; }
 # 1. Python unit tests
 out=""
 check "context.py unit tests pass"              python3 -m unittest discover -s "$skill/tests" -q
+check "watchdog.py unit tests pass"             env -u CLAUDECODE python3 -m unittest discover -s "$repo/claude/skills/watchdog/tests" -q
 
 # 2. Skill text
 check "SKILL.md exists"                         [ -f "$skill/SKILL.md" ]
@@ -33,10 +34,10 @@ check "SKILL.md uses its own session id"        holds "$skill/SKILL.md" '${CLAUD
 check "SKILL.md uses context.py size"           holds "$skill/SKILL.md" 'python3 $C size --session'
 # shellcheck disable=SC2016
 check "SKILL.md finds its script by its own dir" holds "$skill/SKILL.md" 'C=${CLAUDE_SKILL_DIR}/scripts/context.py'
-check "SKILL.md has no fixed install path"      lacks "$skill/SKILL.md" '[~]/.claude/skills'
+check "SKILL.md has no fixed path to itself"     lacks "$skill/SKILL.md" '[~]/.claude/skills/handoff-session-context'
 check "SKILL.md marks the hand-off done"        holds "$skill/SKILL.md" "mark-done"
 # shellcheck disable=SC2016
-check "SKILL.md sets W to watchdog.py"          holds "$skill/SKILL.md" 'W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py'
+check "SKILL.md sets W to the watchdog skill"   holds "$skill/SKILL.md" 'W=~/.claude/skills/watchdog/scripts/watchdog.py'
 check "SKILL.md names no rex-watchdog.sh"      lacks "$skill/SKILL.md" 'rex-watchdog'
 check "SKILL.md names --frontend rex"           holds "$skill/SKILL.md" "--frontend rex"
 check "SKILL.md has no --label"                 lacks "$skill/SKILL.md" '[-][-]label'
@@ -51,9 +52,10 @@ check "skill code has no session ids"          lacks "$skill/scripts" '[0-9a-f]{
 check "skill text has no session ids"          lacks "$skill/SKILL.md" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "context.py is executable"                [ -x "$skill/scripts/context.py" ]
 check "latest.py alias is gone"                 [ ! -e "$skill/scripts/latest.py" ]
-check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py" ]
+check "watchdog.py is executable (skill watchdog)" [ -x "$repo/claude/skills/watchdog/scripts/watchdog.py" ]
+check "watchdog.py is no longer here"            [ ! -e "$skill/scripts/watchdog.py" ]
 check "rex-watchdog.sh is gone"                 [ ! -e "$skill/scripts/rex-watchdog.sh" ]
-check "the launchers package exists"            [ -f "$skill/scripts/launchers/__init__.py" ]
+check "the launchers package moved"             [ -f "$repo/claude/skills/watchdog/scripts/launchers/__init__.py" ]
 # shellcheck disable=SC2016
 for cmd in '$W handoff' '$W retire' '$W restore' '$W new' '$W ready' '$W status' '$W help'; do
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"

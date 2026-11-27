@@ -15,6 +15,7 @@ HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent / "scripts"
 SCRIPT = SCRIPTS / "watchdog.py"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(1, str(HERE.parent.parent / "handoff-session-context" / "scripts"))  # context.py
 import watchdog as wd  # noqa: E402
 import context  # noqa: E402
 

@@ -7,7 +7,7 @@
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-skill="$repo/claude/skills/handoff-session-context"
+skill="$repo/claude/skills/watchdog"
 wd="$skill/scripts/watchdog.py"
 fails=0
 T="proj (watchdog-master)"

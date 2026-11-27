@@ -9,7 +9,7 @@ A session stays below about half of its context window: a big context costs more
 mistakes. At **40 %** of the window the session hands off; by **50 %** the successor runs. (1 M window: 400 k / 500 k;
 200 k window: 80 k / 100 k.) Decision D50 of the owner, 2026-11-23; skill since 2026-11-24.
 
-Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`, `W=${CLAUDE_SKILL_DIR}/scripts/watchdog.py`.
+Set-up: `C=${CLAUDE_SKILL_DIR}/scripts/context.py`, `W=~/.claude/skills/watchdog/scripts/watchdog.py` (the user-level skill `watchdog`).
 This session's id is `${CLAUDE_SESSION_ID}`.
 Install: per work project (a link in `<project>/.claude/skills/`, the hook in `<project>/.claude/settings.local.json`),
 by the agentfiles watchdog step; not at user level.
@@ -55,7 +55,7 @@ from 50 % it asks after every turn. After step 4 below it stays silent for this 
    then the same with `--yes`. With `--frontend rex` it types `/rename deprecated <old name>` and `/exit` into the old pane, checks the new name,
    waits for the old process to end, and renames its window `archived-<label>`. It refuses without your `ready`.
 
-## Watchdog CLI (`$W` = `${CLAUDE_SKILL_DIR}/scripts/watchdog.py`)
+## Watchdog CLI (`$W` = `~/.claude/skills/watchdog/scripts/watchdog.py`, skill `watchdog`)
 
 `watchdog.py` is the one entry point. It decides and knows no front-end. `--frontend terminal` (the default) only
 prints, so it works everywhere; `--frontend rex` hands the decision to the Rex launcher (`scripts/launchers/`), from a
