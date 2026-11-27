@@ -16,6 +16,8 @@ MACHINES = ("## Machines\n\n| Machine | Checkout | Reach | Notes |\n|---|---|---
 class StartBase(FrontBase):
     def setUp(self):
         super().setUp()
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(self.proj)], check=True)  # the watchdog form needs a git root
         self.part = self.proj / ".claude/docs/prompts/proj-watchdog.md"
         self.part.parent.mkdir(parents=True)
         self.part.write_text("# proj (watchdog)\n\n## Machines\n\n| Machine | Checkout | Reach | Notes |\n"
@@ -114,6 +116,33 @@ class TestProjectFromCwd(StartBase):
         d = json.loads(r.stdout)
         self.assertEqual(Path(d["project_dir"]).resolve(), self.proj.resolve())
         self.assertTrue(d["name"].startswith("proj (watchdog) #"), d["name"])
+
+
+# Guard (owner, 2026-11-27): the watchdog form of start runs only in the git root of a project.
+class TestGitRootGuard(StartBase):
+    def test_a_parent_folder_with_no_git_is_refused(self):
+        """Like ~/Developer/_work: no repo, but it holds the project folders (and transcripts)."""
+        from test_watchdog import context
+        (self.projects / context.project_slug(str(self.root))).mkdir(parents=True, exist_ok=True)
+        r = self.cli("start", "--model", "claude-opus-5-5", cwd=self.root, extra={"PWD": str(self.root)})
+        self.assertEqual(r.returncode, 64, r.stdout + r.stderr)
+        self.assertIn("git root", r.stderr)
+        self.assertEqual(self.execs(), [])
+
+    def test_a_sub_folder_given_as_project_dir_is_refused(self):
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(self.proj)], check=True)
+        (self.proj / "sub").mkdir()
+        r = self.cli("start", "--model", "claude-opus-5-5", "--project-dir", str(self.proj / "sub"), "--json")
+        self.assertEqual(r.returncode, 64)
+        self.assertIn("git root", r.stderr)
+
+    def test_the_git_root_is_accepted(self):
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(self.proj)], check=True)
+        r = self.cli("start", "--model", "claude-opus-5-5", "--json", cwd=self.proj, extra={"PWD": str(self.proj)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(Path(json.loads(r.stdout)["project_dir"]).resolve(), self.proj.resolve())
 
 
 # 10. `new` is gone: usage with a hint

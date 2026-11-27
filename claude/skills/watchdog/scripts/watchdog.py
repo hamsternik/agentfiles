@@ -431,7 +431,17 @@ def start_title(a):
     return f"{name} (watchdog-{a.machine})", None
 
 
+def _is_git_root(folder):
+    try:
+        return project.git_root(folder).resolve() == Path(folder).resolve()
+    except project.ProjectError:
+        return False
+
+
 def cmd_start(a):
+    if not a.title and not _is_git_root(a.project_dir):  # the title comes from the folder: it must be the project
+        return _err(f"{a.project_dir} is not the git root of a project: run start in the project folder, or give "
+                    f"--project-dir <the repo root> (owner rule 2026-11-27)", 64)
     a.title, err = start_title(a)
     if err:
         return _err(err, 64)
