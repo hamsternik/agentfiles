@@ -29,7 +29,7 @@ check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py
 check "SKILL.md sets W"                         holds "$skill/SKILL.md" 'W=~/.claude/skills/watchdog/scripts/watchdog.py'
 # shellcheck disable=SC2016
 for cmd in '$W init' '$W public' '$W start' '$W status' '$W handoff' '$W ready' '$W retire' '$W restore' '$W whatsup' \
-  '$W queue add' '$W queue list' '$W queue decide' '$W queue default' '$W queue close' '$W queue ref' '$W help'; do
+  '$W queue add' '$W queue list' '$W queue decide' '$W queue default' '$W queue close' '$W queue ref' '$W guard' '$W help'; do
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
 done
 for fe in "--frontend rex" "--frontend desktop" "--dry-run" "detach_session" "start_session"; do
@@ -75,6 +75,24 @@ check "rules.md: queue ref"                     holds "$skill/rules.md" "queue r
 check "rules.md: queue add has --title"         holds "$skill/rules.md" "queue add --title"
 check "SKILL.md: queue add has --title"         holds "$skill/SKILL.md" "queue add --title"
 check "queue template names queue ref"          holds "$skill/templates/queue.md" "queue ref"
+
+# Rule 1 against inline work (gaps G3, G4, G5). The phrases may wrap: compare them in one line, inside section 1.
+rule1() {
+  sed -n '/^## 1\./,/^## 2\./p' "$skill/rules.md" | tr '\n' ' ' | tr -s ' ' | grep -qF -- "$1"
+}
+for anchor in \
+  "facts already in context" \
+  "at most ~3 read-only commands" \
+  "no file writes" \
+  "scope and outcome fixed" \
+  "recon, spike, research, pilot, plan, TDD" \
+  "goal can change" \
+  "When a follow-up turns an inline answer into work, stop and route the work with the context so far" \
+  "In a watchdog, rule 1 overrides the working-session rules of the global and project rules files" \
+  "inline work, test code, investigation, artifacts" \
+  "the routed session follows them"; do
+  check "rules.md rule 1: $anchor"              rule1 "$anchor"
+done
 
 check "no session id in the skill"              lacks "$skill" '(local_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "no home path in the skill"               lacks "$skill" '/Users/'

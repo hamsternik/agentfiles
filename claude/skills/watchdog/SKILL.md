@@ -26,6 +26,7 @@ Set-up: `W=~/.claude/skills/watchdog/scripts/watchdog.py` (agentfiles links this
 | `python3 $W restore --title T [FRONT-END]` | resume a session after an exit or a crash |
 | `python3 $W whatsup` | one screen: the watchdog sessions, the open D-rows with age, git, the Inbox outbox |
 | `python3 $W queue next-id \| add \| list \| ref \| decide \| default \| close` | the decision queue (section D) |
+| `python3 $W guard [--install --settings F]` | the PreToolUse hook of rule 1: a session with "(watchdog" in its name edits only its own files (project memory, project part, queue, `*handoff*`, `*-prompt-*.md`); its sub-agents pass. The watchdog step adds it to each work project |
 
 FRONT-END: `--frontend terminal` (the default) runs `claude` in this terminal: use it from a plain terminal only (it refuses
 inside a Claude Code session). In a session use `--frontend rex` (a Rex window; the Rex session is named after the project

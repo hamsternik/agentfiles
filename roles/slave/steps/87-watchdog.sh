@@ -10,5 +10,8 @@ install_watchdog_skill
 # Work skills (handoff-session-context …): per work project, not at user level.
 install_work_skills
 
+# The watchdog guard hook, per work project (after the work skills).
+install_watchdog_guard
+
 # The minimal statusline for watchdogs (records the window size for the hand-off skill).
 install_statusline

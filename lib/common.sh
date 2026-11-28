@@ -259,6 +259,29 @@ install_work_skills() {
   done
 }
 
+# The watchdog guard (skill watchdog, rules.md rule 1): a PreToolUse hook in the
+# .claude/settings.local.json of each work project, so a watchdog session does no
+# file work inline. Run it after install_work_skills: both back up that file.
+install_watchdog_guard() {
+  local root="${AF_WORK_ROOT:-$HOME/Developer/_work}" project settings result
+  local cli="$AF_ROOT/claude/skills/watchdog/scripts/watchdog.py"
+  [[ -d "$root" ]] || return 0  # install_work_skills warns
+  for project in "$root"/*/; do
+    project="${project%/}"
+    [[ -e "$project/.git" ]] || continue
+    settings="$project/.claude/settings.local.json"
+    exclude_local "$project" /.claude/settings.local.json
+    exclude_local "$project" '/.claude/settings.local.json.bak-*'
+    if [[ "$AF_DRY_RUN" == 1 ]]; then
+      printf '   [dry-run] %s guard --install --settings %s\n' "$cli" "$settings" >&2
+    elif result="$(python3 "$cli" guard --install --settings "$settings" 2>&1)"; then
+      ok "$(basename "$project"): watchdog guard $result"
+    else
+      warn "watchdog guard: $settings left alone ($result)"
+    fi
+  done
+}
+
 # install_statusline: claude/statusline.sh (directory, model, short session id,
 # context %, HAND OFF / OVER) in ~/.claude/settings.json; it also records the window
 # size for handoff-session-context. A statusline of another script is left alone.

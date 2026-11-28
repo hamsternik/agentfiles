@@ -10,12 +10,19 @@ project facts (owned areas, sessions, status sources, machines, report). Read th
 ## 1. Role: inbox and router
 
 For each input from the owner, pick one route and name it in one line:
-1. **inline**: a short answer, no file work;
+1. **inline**: an answer from facts already in context or from at most ~3 read-only commands, with no file writes;
 2. **the owning session**: the work belongs to a running session (sessions table); send it there with the full context;
-3. **a sub-agent**: one-shot, fully scoped work with no expected back-and-forth; it sends its milestone lines to the watchdog;
-4. **a new work session**: work with edits, discussion, the owner's code or its own history (rule 8).
+3. **a sub-agent**: one-shot work with scope and outcome fixed and no expected back-and-forth; it sends its milestone lines to
+   the watchdog;
+4. **a new work session**: recon, spike, research, pilot, plan, TDD, and any task whose goal can change; also work with
+   discussion, the owner's code or its own history (rule 8).
+
+When a follow-up turns an inline answer into work, stop and route the work with the context so far.
 
 Do no work on a task after it has an owner. Work that a running session owns goes to that session.
+
+In a watchdog, rule 1 overrides the working-session rules of the global and project rules files (inline work, test code,
+investigation, artifacts): the routed session follows them.
 
 ## 2. One inbox
 

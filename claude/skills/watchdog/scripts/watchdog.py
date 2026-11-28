@@ -4,7 +4,8 @@
 Reads the transcripts (~/.claude/projects/<slug>/), the live sessions (~/.claude/sessions/<pid>.json) and the context
 size (context.py). It decides; it knows no front-end. `--frontend rex` hands the decision to a launcher
 (launchers/), which starts, types and renames; the default front-end, terminal, only prints.
-Run `watchdog.py help` for the subcommands. Standard library only; writes only the READY marker files.
+Run `watchdog.py help` for the subcommands. Standard library only; writes the READY marker files, the queue, the
+init files and (guard --install) one settings file.
 
 Names: fixed title T; a session's name is `T #<first 8 hex of its id>` (old sessions: plain T).
 Env: HANDOFF_PROJECTS_DIR, HANDOFF_SESSIONS_DIR, HANDOFF_CACHE_DIR (tests), plus the context.py variables.
@@ -26,6 +27,7 @@ _HERE = Path(__file__).resolve().parent  # the real folder in the clone (the ski
 sys.path.insert(0, str(_HERE))
 sys.path.insert(1, str(_HERE.parent.parent / "handoff-session-context" / "scripts"))  # context.py stays there
 import context  # noqa: E402
+import guard  # noqa: E402
 import project  # noqa: E402
 import dqueue  # noqa: E402
 
@@ -61,6 +63,11 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
            2 h old or more whose default does not start with "none"; close: rows done > 7 days go to "Closed"
   whatsup  one screen: the watchdog sessions of the project, the open D-rows with age, the git state (commits not
            pushed, changed files), the Inbox outbox; the skill adds the Inbox items (ArtifactData)
+  guard    [--install --settings F]
+           the PreToolUse hook (its JSON on stdin): in a session with "(watchdog" in its name, Edit, Write and
+           NotebookEdit pass only on the project memory, the project part, the queue, *handoff* files and
+           *-prompt-*.md; exit 2 = refused. A sub-agent and every other session pass, also after an error.
+           --install: add the hook to the settings file F once (backup first)
   help     this text
 
 FRONT-END: --frontend terminal|rex|desktop [--rex S] [--dry-run].
@@ -671,6 +678,34 @@ def cmd_whatsup(a):
     return 0
 
 
+def _session_name(data):
+    """The name of the session of a hook input: its live entry, else the own title in its transcript."""
+    name = live_by_session().get(data.get("session_id"), {}).get("name")
+    if name:
+        return name
+    transcript = data.get("transcript_path")
+    return summarize(Path(transcript))["title"] if transcript and Path(transcript).is_file() else None
+
+
+def cmd_guard(a):
+    if a.install:
+        if not a.settings:
+            return _err("guard --install needs --settings <file>", 64)
+        try:
+            print(guard.install(a.settings))
+        except (OSError, ValueError, AttributeError, TypeError) as e:
+            return _err(f"{a.settings}: not changed: {e}", 1)
+        return 0
+    try:
+        why = guard.refusal(json.loads(sys.stdin.read()), _session_name)
+    except Exception as e:  # a hook fails open: an error here must never block a session
+        return _err(f"guard: not checked: {e}", 0)
+    if why:
+        print(why, file=sys.stderr)
+        return 2
+    return 0
+
+
 def _write(path, q):
     path.write_text(q.text())
 
@@ -852,6 +887,9 @@ def main(argv=None):
     p.add_argument("--local", action="store_true", help="hide the 2 files in the repo's git exclude file")
     add("public")
     add("whatsup")
+    p = add("guard")
+    p.add_argument("--install", action="store_true", help="add the hook to --settings once")
+    p.add_argument("--settings")
     p = add("queue")
     qs = p.add_subparsers(dest="qcmd", required=True)
     qs.add_parser("next-id")
@@ -873,6 +911,8 @@ def main(argv=None):
     q.add_argument("id")
     qs.add_parser("close")
     a = ap.parse_args(argv)
+    if a.cmd == "guard":
+        return cmd_guard(a)
     if a.cmd in ("init", "public", "queue", "whatsup"):
         try:
             return {"init": cmd_init, "public": cmd_public, "queue": cmd_queue, "whatsup": cmd_whatsup}[a.cmd](a)
