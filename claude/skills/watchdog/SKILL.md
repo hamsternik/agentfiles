@@ -25,7 +25,7 @@ Set-up: `W=~/.claude/skills/watchdog/scripts/watchdog.py` (agentfiles links this
 | `python3 $W retire --session OLD --caller NEW [FRONT-END] [--yes]` | retire the old session after its successor is ready |
 | `python3 $W restore --title T [FRONT-END]` | resume a session after an exit or a crash |
 | `python3 $W whatsup` | one screen: the watchdog sessions, the open D-rows with age, git, the Inbox outbox |
-| `python3 $W queue next-id \| add \| list \| decide \| default \| close` | the decision queue (section D) |
+| `python3 $W queue next-id \| add \| list \| ref \| decide \| default \| close` | the decision queue (section D) |
 
 FRONT-END: `--frontend terminal` (the default) runs `claude` in this terminal: use it from a plain terminal only (it refuses
 inside a Claude Code session). In a session use `--frontend rex` (a Rex window; the Rex session is named after the project
@@ -75,11 +75,15 @@ successor retires this session (`$W retire`).
 
 Rules 3 and 4 of `rules.md`. The path comes from the project part (``Queue file: `<path>` ``), else
 `.claude/docs/decisions/queue.md`, else (an older project) `docs/decisions/queue.md` when only that file exists.
-- `python3 $W queue add --item "<question>" --default "<recommended decision>" [--scope S]`: the next id, an `open` row, one
-  Inbox item, and the wake-up line. Set that wake-up: `ScheduleWakeup` when it is in your tool list (it works outside `/loop`;
-  checked 2026-11-26), else the printed `CronCreate` one-shot line. For a deletion, a plan or spec, a rule text, a commit or push, or a write
-  to a shared or external system: `--default "none: <why>"`.
-- `python3 $W queue list [--all] [--json]`: the open rows with their age in hours.
+- `python3 $W queue add --title "<at most 8 words>" --item "<question>" --default "<recommended decision>" [--scope S]`: the
+  next id, an `open` row whose item starts `**<title>** — `, one Inbox item, and the wake-up line. Set that wake-up:
+  `ScheduleWakeup` when it is in your tool list (it works outside `/loop`; checked 2026-11-26), else the printed `CronCreate`
+  one-shot line. For a deletion, a plan or spec, a rule text, a commit or push, or a write to a shared or external system:
+  `--default "none: <why>"`.
+- `python3 $W queue list [--all] [--json]`: the open rows as `D<nn> (<title>)  <status>  <age>`; `--json` has the title and
+  the full item.
+- `python3 $W queue ref D<nn> …`: the form for a message, `D80 (<title>), D84 (<title>)`, from the main and the Closed table.
+  An older row with no title prefix gets its title from the start of its item.
 - `python3 $W queue decide D<nn> "<answer>"`: the owner's answer into the row and the Inbox item.
 - `python3 $W queue default D<nn>`: at the wake-up; it refuses when the row may not take its default.
 - `python3 $W queue close`: the rows done more than 7 days ago go to "Closed".

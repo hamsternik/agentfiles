@@ -3,6 +3,8 @@
 Main table: the first table whose header has a "default" column (id, opened, item, scope or "rows / scope",
 default if no answer, owner, status). Closed table: the first table after "## Closed" (id, ref, opened, item,
 status). A cell may hold an escaped pipe (\\|). Only the row that a command changes is written again.
+The item cell starts with the short title of the row: "**<title>** — <details>". An older row has no such prefix:
+its title comes from the start of the item (row_title) and the row is not rewritten.
 Standard library only; no CLI (watchdog.py is the one entry point). Not named queue.py: that is a standard module.
 """
 import datetime
@@ -10,8 +12,13 @@ import re
 
 CLOSED_AFTER_DAYS = 7
 DEFAULT_AFTER_HOURS = 2
+TITLE_MAX_WORDS = 8
+TITLE_MAX_CHARS = 60  # of a title that comes from the item of an older row
+INBOX_ID = re.compile(r"\s*· Inbox (I-\d{8}-[0-9a-f]{4})$")
 _SPLIT = re.compile(r"(?<!\\)\|")
 _DONE = re.compile(r"^(decided|default taken) (\d{4}-\d{2}-\d{2})")
+_PREFIX = re.compile(r"^\*\*(.+?)\*\* — ")
+_TITLE_END = re.compile(r"\(|:(?!\d)|(?<!\d):")  # a ":" between 2 digits is a clock time
 
 
 class QueueError(RuntimeError):
@@ -46,6 +53,45 @@ def parse_time(text):
         return None
     d = datetime.datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
     return d.replace(hour=int(m.group(2)), minute=int(m.group(3))) if m.group(2) else d
+
+
+def title_refusal(title):
+    """None when `title` may be the title of a new row, else the reason."""
+    if not title.strip():
+        return "the title is empty"
+    if title.splitlines() != [title]:  # every break that would split the table row
+        return "the title has a line break"
+    for bad in ("|", "**"):
+        if bad in title:
+            return f'the title has "{bad}"'
+    words = len(title.split())
+    if words > TITLE_MAX_WORDS:
+        return f"the title has {words} words (at most {TITLE_MAX_WORDS})"
+    return None
+
+
+def item_with_title(title, details):
+    return f"**{title.strip()}** — {details}"
+
+
+def _cut_at_word(text, limit):
+    if len(text) <= limit:
+        return text
+    space = text.rfind(" ", 0, limit + 1)
+    return text[:space if space > 0 else limit].rstrip()
+
+
+def row_title(row):
+    """The title of a row: its "**<title>** — " prefix. For an older row: "text" of an item that starts
+    "<own D-id> (text)", else the item up to the first ":" or "(", else (nothing before it) the item."""
+    item = INBOX_ID.sub("", row.get("item", "")).strip()
+    prefix = _PREFIX.match(item)
+    if prefix:
+        return prefix.group(1)
+    rid = row.get("ref") or row.get("id", "")  # a Closed row: the D-id is in "ref"
+    own = re.match(rf"{re.escape(rid)}\s*\(((?:[^()]|\([^()]*\))+)\)", item)
+    start = own.group(1) if own else _TITLE_END.split(item, maxsplit=1)[0]
+    return _cut_at_word(start.strip() or item, TITLE_MAX_CHARS)
 
 
 class Queue:
@@ -96,6 +142,14 @@ class Queue:
         for r in self.rows():
             if r.get("id") == rid:
                 return r
+        raise QueueError(f"no row {rid} in the queue", 1)
+
+    def find(self, rid):
+        """The row of a D-id in the main table, else the first one in the Closed table (column "ref")."""
+        for key, rows in (("id", self.rows()), ("ref", self.closed())):
+            for r in rows:
+                if r.get(key) == rid:
+                    return r
         raise QueueError(f"no row {rid} in the queue", 1)
 
     # ---- changes

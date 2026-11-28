@@ -52,10 +52,12 @@ HELP = """watchdog.py — session logic of a project watchdog; the one entry poi
   init     [--local]
            the project part and the decision queue from the templates (never overwrites); --local: git-exclude both
   public   public, private or unknown (gh repo view)
-  queue next-id | add --item TEXT --default TEXT [--scope S] [--owner O] | list [--all] [--json]
-        | decide D<nn> ANSWER | default D<nn> | close
+  queue next-id | add --title TITLE --item TEXT --default TEXT [--scope S] [--owner O] | list [--all] [--json]
+        | ref D<nn>... | decide D<nn> ANSWER | default D<nn> | close
            the decision queue (path: "Queue file:" in the project part, else .claude/docs/decisions/queue.md).
-           add: a new open row + one Inbox item (af inbox), and the 2 h wake-up line; default: only an open row
+           add: a new open row + one Inbox item (af inbox), and the 2 h wake-up line; TITLE: at most 8 words,
+           no "|", no "**", no line break; list: "D<nn> (title)  status  age"; ref: "D80 (title), D84 (title)"
+           for a message, from both tables (exit 1 for an unknown id); default: only an open row
            2 h old or more whose default does not start with "none"; close: rows done > 7 days go to "Closed"
   whatsup  one screen: the watchdog sessions of the project, the open D-rows with age, the git state (commits not
            pushed, changed files), the Inbox outbox; the skill adds the Inbox items (ArtifactData)
@@ -610,11 +612,8 @@ def _inbox(args):
     return r.stdout.strip()
 
 
-INBOX_ID = re.compile(r"· Inbox (I-\d{8}-[0-9a-f]{4})$")
-
-
 def _answer(row, text):
-    m = INBOX_ID.search(row.get("item", ""))
+    m = dqueue.INBOX_ID.search(row.get("item", ""))
     if m:
         _inbox(["answer", m.group(1), text])
 
@@ -689,12 +688,15 @@ def cmd_queue(a):
     try:
         q = dqueue.Queue(text)
         if a.qcmd == "add":
+            why = dqueue.title_refusal(a.title)
+            if why:
+                return _err(f"--title: {why}", 64)
             rid = project.next_id(path.read_text(errors="ignore"))  # read again just before the write
-            item = a.item
-            iid = _inbox(["add", "--type", "decision", "--title", a.item, "--ref", rid, "--project", proj.name,
-                          "--default", a.default])
+            item = dqueue.item_with_title(a.title, a.item)
+            iid = _inbox(["add", "--type", "decision", "--title", f"{a.title.strip()} — {a.item}", "--ref", rid,
+                          "--project", proj.name, "--default", a.default])
             if iid:
-                item = f"{a.item} · Inbox {iid}"
+                item = f"{item} · Inbox {iid}"
             q.add({"id": rid, "opened": now.strftime("%Y-%m-%d %H:%M UTC"), "item": item, "scope": a.scope or "",
                    "default": a.default, "owner": a.owner, "status": "open"})
             _write(path, q)
@@ -709,10 +711,14 @@ def cmd_queue(a):
         if a.qcmd == "list":
             rows = [r for r in q.rows() if a.all or r.get("status") == "open"]
             if a.json:
-                print(json.dumps([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]))
+                print(json.dumps([{**{k: v for k, v in r.items() if not k.startswith("_")},
+                                   "title": dqueue.row_title(r)} for r in rows]))
                 return 0
             for r in rows:
-                print(_row_line(r, now))
+                print(f"{r['id']} ({dqueue.row_title(r)})  {r.get('status', '')}  {dqueue.age_text(r, now)}")
+            return 0
+        if a.qcmd == "ref":  # every id is found before the one line is printed
+            print(", ".join([f"{i} ({dqueue.row_title(q.find(i))})" for i in a.ids]))
             return 0
         if a.qcmd == "decide":
             row = q.row(a.id)
@@ -850,6 +856,7 @@ def main(argv=None):
     qs = p.add_subparsers(dest="qcmd", required=True)
     qs.add_parser("next-id")
     q = qs.add_parser("add")
+    q.add_argument("--title", required=True, help="the short name of the decision, at most 8 words")
     q.add_argument("--item", required=True)
     q.add_argument("--default", required=True, help='the decision after 2 h; "none: <why>" = never a default')
     q.add_argument("--scope")
@@ -857,6 +864,8 @@ def main(argv=None):
     q = qs.add_parser("list")
     q.add_argument("--all", action="store_true")
     q.add_argument("--json", action="store_true")
+    q = qs.add_parser("ref")
+    q.add_argument("ids", nargs="+", metavar="D<nn>")
     q = qs.add_parser("decide")
     q.add_argument("id")
     q.add_argument("answer")

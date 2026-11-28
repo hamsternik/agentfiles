@@ -9,6 +9,9 @@ A decided or dropped row stays 7 days in the table, then moves to "Closed".
 
 `status` = `open`, `decided <YYYY-MM-DD>: <answer>`, `default taken <YYYY-MM-DD HH:MM UTC>: <decision>`, or `dropped`.
 
+Each `item` starts with its short title: `**<title>** — <details>` (`queue add --title`, at most 8 words). In a message, write
+each D-id with its title; `watchdog.py queue ref D<nn> …` prints them.
+
 Ids are stable references: never rename or reuse an id. To add a row, read this file again just before the write and take the next id
 (`watchdog.py queue next-id`: the highest `D` number in both tables + 1). A closed row gets the next free `C` id; its old `D` id
 stays in the column "ref".

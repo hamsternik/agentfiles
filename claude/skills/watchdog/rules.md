@@ -24,6 +24,7 @@ Do no work on a task after it has an owner. Work that a running session owns goe
 - The owner gets from the watchdog: the route line, one result line per milestone, and the decisions that need him, each id with
   a one-line description (for example "D12 (load of the test data)"). The details (diffs, test lists, logs) stay in the session
   that owns the work.
+- In a message, write each D-id with its title; `queue ref` prints them (`watchdog.py queue ref D12 D13`).
 - The watchdog chat is an inbox. When a question or a task needs the owner's detailed attention (data examples, table dumps, design
   back-and-forth about one change), the watchdog does not answer it at length: it forwards the question with the context so far to
   the session that owns the work (or starts a new session when none exists), says "answer in your own window", and tells the
@@ -36,10 +37,10 @@ Do no work on a task after it has an owner. Work that a running session owns goe
 The watchdog never calls it. To ask the owner, in one step:
 1. Write the question as a plain chat message: the options, the recommended decision, and what the watchdog does with that
    decision after 2 h.
-2. Run `watchdog.py queue add --item "<question>" --default "<recommended decision>"` (path: the project part, default
-   `.claude/docs/decisions/queue.md`). It reads the file again, takes the next id, writes the `open` row and queues one Inbox item
-   (`type: decision`, `links.ref` = the D-id). With no Inbox on this machine the row is enough. Never rename or reuse an id. A
-   question that must never get a default (rule 4) gets `--default "none: <why>"`.
+2. Run `watchdog.py queue add --title "<at most 8 words>" --item "<question>" --default "<recommended decision>"` (path: the
+   project part, default `.claude/docs/decisions/queue.md`). It reads the file again, takes the next id, writes the `open` row and
+   queues one Inbox item (`type: decision`, `links.ref` = the D-id). With no Inbox on this machine the row is enough. Never
+   rename or reuse an id. A question that must never get a default (rule 4) gets `--default "none: <why>"`.
 3. The Inbox item reaches the page when the skill `triage-inbox` flushes the outbox.
 4. Set the one wake-up that `queue add` prints, for 2 h later: `ScheduleWakeup` when the tool is in your list, else the `CronCreate`
    one-shot line. Its prompt is `watchdog queue default D<nn>`.

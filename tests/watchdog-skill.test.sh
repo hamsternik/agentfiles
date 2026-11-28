@@ -29,7 +29,7 @@ check "watchdog.py is executable"               [ -x "$skill/scripts/watchdog.py
 check "SKILL.md sets W"                         holds "$skill/SKILL.md" 'W=~/.claude/skills/watchdog/scripts/watchdog.py'
 # shellcheck disable=SC2016
 for cmd in '$W init' '$W public' '$W start' '$W status' '$W handoff' '$W ready' '$W retire' '$W restore' '$W whatsup' \
-  '$W queue add' '$W queue list' '$W queue decide' '$W queue default' '$W queue close' '$W help'; do
+  '$W queue add' '$W queue list' '$W queue decide' '$W queue default' '$W queue close' '$W queue ref' '$W help'; do
   check "SKILL.md names $cmd"                   holds "$skill/SKILL.md" "$cmd"
 done
 for fe in "--frontend rex" "--frontend desktop" "--dry-run" "detach_session" "start_session"; do
@@ -68,6 +68,13 @@ for anchor in \
   "ASD-STE100"; do
   check "rules.md: $anchor"                     holds "$skill/rules.md" "$anchor"
 done
+
+# Row titles (queue-titles prompt, use cases 20-21): rule 2 asks for them; every documented add has a title.
+check "rules.md: D-id with its title"           holds "$skill/rules.md" "write each D-id with its title"
+check "rules.md: queue ref"                     holds "$skill/rules.md" "queue ref"
+check "rules.md: queue add has --title"         holds "$skill/rules.md" "queue add --title"
+check "SKILL.md: queue add has --title"         holds "$skill/SKILL.md" "queue add --title"
+check "queue template names queue ref"          holds "$skill/templates/queue.md" "queue ref"
 
 check "no session id in the skill"              lacks "$skill" '(local_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
 check "no home path in the skill"               lacks "$skill" '/Users/'
